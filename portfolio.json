@@ -1,0 +1,32 @@
+{
+  "project_id": "PRJ-028",
+  "slug": "parallax-cad",
+  "title": "Parallax CAD",
+  "summary": "Browser-first parametric mechanical modeler with exact B-rep operations, constrained sketches, drawings, and local project persistence.",
+  "description": "An early pre-alpha CAD environment focused on a precise sketch-to-solid workflow in the browser.",
+  "tech_stack": ["React", "TypeScript", "Three.js", "OpenCascade", "Vite", "IndexedDB"],
+  "status": "active",
+  "category": "Creative Tools",
+  "featured": true,
+  "order": 28,
+  "highlights": [
+    "Builds exact extrusion and revolve geometry in a Web Worker.",
+    "Includes constraint-driven sketches, measurements, drawings, and STEP/STL export.",
+    "Keeps projects local with versioned IndexedDB autosave and recovery snapshots."
+  ],
+  "build_command": "npm run build",
+  "run_commands": ["npm run dev -- --host 127.0.0.1 --port 5231 --strictPort", "npm run build", "npm test"],
+  "preview_dir": "dist",
+  "preview_entry": "index.html",
+  "notes": "Static production output is embedded by the portfolio; the Vite service is available for live development.",
+  "services": [
+    {
+      "slug": "web",
+      "label": "Parallax Vite app",
+      "command": "npm run dev -- --host 127.0.0.1 --port 5231 --strictPort",
+      "open_url": "http://127.0.0.1:5231",
+      "health_url": "http://127.0.0.1:5231",
+      "description": "Runs the live browser CAD environment locally."
+    }
+  ]
+}
