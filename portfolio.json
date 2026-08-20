@@ -2,6 +2,7 @@
   "project_id": "PRJ-028",
   "slug": "parallax-cad",
   "title": "Parallax CAD",
+  "repo_url": "https://github.com/ntvns0/parallax",
   "summary": "Browser-first parametric mechanical modeler with exact B-rep operations, constrained sketches, drawings, and local project persistence.",
   "description": "An early pre-alpha CAD environment focused on a precise sketch-to-solid workflow in the browser.",
   "tech_stack": ["React", "TypeScript", "Three.js", "OpenCascade", "Vite", "IndexedDB"],
