@@ -3,7 +3,7 @@ import * as THREE from 'three'
 import type { ExtrudeFeature, RevolveFeature, Feature, FilletFeature, SketchFeature } from '../core/model'
 import { getProfileRegions } from '../core/sketch'
 import { buildOperationChain, describeOperationChain } from './operation-chain'
-import type { KernelExportFormat, KernelFeatureDiagnostic, KernelMesh, KernelRequest } from './kernel-types'
+import type { KernelExportFormat, KernelFeatureDiagnostic, KernelMesh, KernelRequest, ViewportMeshResult } from './kernel-types'
 import { KernelClient, type KernelProjection } from './kernel-client'
 import { recordFeatureDiagnostics } from '../core/diagnostics'
 
@@ -51,6 +51,22 @@ export async function evaluateExactExtrude(feature: ExactFeature, sketch: Sketch
   const mesh = await kernelClient.evaluateMesh(operations, describeContext)
   recordChainDiagnostics(chainFeatureIds, mesh.unresolved ?? [])
   return mesh
+}
+
+export async function evaluateViewportMesh(
+  feature: ExactFeature,
+  sketch: SketchFeature | undefined,
+  features: Feature[] = sketch ? [sketch, feature] : [feature],
+): Promise<ViewportMeshResult> {
+  if ((feature.kind === 'extrude' || feature.kind === 'revolve') && (!sketch || !getProfileRegions(sketch).length)) {
+    throw new Error('Sketch has no closed profile')
+  }
+  const operations = buildOperationChain(feature, features)
+  const result = await kernelClient.evaluateViewportMesh(operations, describeOperationChain(operations))
+  if (result.status === 'ready') {
+    recordChainDiagnostics(operations.map((operation) => operation.featureId), result.mesh.unresolved ?? [])
+  }
+  return result
 }
 
 export async function preflightExactFillet(targetFeatureId: string, preview: FilletFeature, features: Feature[]) {
@@ -124,9 +140,9 @@ export async function projectExactDocument(
 
 export function kernelMeshToGeometry(mesh: KernelMesh) {
   const geometry = new THREE.BufferGeometry()
-  geometry.setAttribute('position', new THREE.Float32BufferAttribute(mesh.vertices, 3))
-  geometry.setAttribute('normal', new THREE.Float32BufferAttribute(mesh.normals, 3))
-  geometry.setIndex(mesh.triangles)
+  geometry.setAttribute('position', new THREE.BufferAttribute(mesh.vertices, 3))
+  geometry.setAttribute('normal', new THREE.BufferAttribute(mesh.normals, 3))
+  geometry.setIndex(new THREE.BufferAttribute(mesh.triangles, 1))
   geometry.userData.faceGroups = mesh.faceGroups
   geometry.computeBoundingSphere()
   return geometry

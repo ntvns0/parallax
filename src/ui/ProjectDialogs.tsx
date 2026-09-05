@@ -16,6 +16,9 @@ import { MAX_BRIGHTNESS, MIN_BRIGHTNESS, useViewportStore } from '../viewport/vi
 import { exportExactDocument, hasExactSolid } from '../kernel/exact-kernel'
 import { getAppCommands } from './commands'
 import { downloadBlob, fileStem } from './download'
+import { clientRuntime } from '../runtime/client-runtime'
+import { downloadPerformanceReport, performanceReport } from '../runtime/performance'
+import { inspectStorage, requestPersistentStorage, type StorageStatus } from '../runtime/storage-status'
 
 function downloadDocument(document: CadDocument) {
   const blob = new Blob([JSON.stringify(document, null, 2)], { type: 'application/json' })
@@ -78,6 +81,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
   const displayUnits = document.displayUnits ?? 'mm'
   const brightness = useViewportStore((state) => state.brightness)
   const [diagnostics, setDiagnostics] = useState(readDiagnostics)
+  const [storage, setStorage] = useState<StorageStatus | null>(null)
   const [exportState, setExportState] = useState<{ status: 'idle' | 'loading' | 'error'; message: string | null }>({
     status: 'idle',
     message: null,
@@ -87,6 +91,10 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
     const refresh = () => setDiagnostics(readDiagnostics())
     window.addEventListener('parallax:diagnostics-changed', refresh)
     return () => window.removeEventListener('parallax:diagnostics-changed', refresh)
+  }, [])
+
+  useEffect(() => {
+    void inspectStorage().then(setStorage)
   }, [])
 
   async function handleExport(format: 'step' | 'stl') {
@@ -139,6 +147,12 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
         <small>STEP preserves exact B-rep surfaces for CAD interoperability. STL outputs tessellated meshes for 3D printing.</small>
       </div>
       <div><span>Autosave</span><strong>On · local browser storage</strong><small>Each project is stored independently with recovery snapshots.</small></div>
+      <div><span>Client hardware</span><strong>{clientRuntime.policy.profile} profile · {clientRuntime.facts.logicalProcessors ?? 'unknown'} logical processors</strong><small>Rendering and geometry caches use this browser's hardware. Exact CAD work never runs on the web host.</small></div>
+      <div><span>Storage health</span><strong>{storage ? `${storage.persisted ? 'Persistent' : 'Best effort'}${storage.usageRatio === null ? '' : ` · ${Math.round(storage.usageRatio * 100)}% used`}` : 'Checking…'}</strong>
+        <div className="export-actions"><button disabled={!storage?.available || storage.persisted === true} onClick={() => void requestPersistentStorage().then(setStorage)}>Keep projects on this device</button></div>
+        <small>Browser eviction rules apply until persistent storage is granted. Project backups remain portable JSON files.</small>
+      </div>
+      <div><span>Performance report</span><div className="diagnostic-summary"><strong>{performanceReport().events.length} local timing event{performanceReport().events.length === 1 ? '' : 's'}</strong><button onClick={downloadPerformanceReport}><Download /> Export</button></div><small>The report contains hardware capability flags and timings, not project geometry or names.</small></div>
       <div><span>Geometry</span><strong>Exact OpenCascade B-rep</strong><small>Immediate mesh previews are replaced by exact results when ready.</small></div>
       <div className="diagnostic-settings"><span>Diagnostics</span><div className="diagnostic-summary"><strong>{diagnostics.length} recorded event{diagnostics.length === 1 ? '' : 's'}</strong><div><button disabled={!diagnostics.length} onClick={downloadDiagnostics}><Download /> Export</button><button disabled={!diagnostics.length} onClick={clearDiagnostics}><Trash2 /> Clear</button></div></div><small>Errors persist locally across sessions so geometry failures can be investigated over time.</small>
         {diagnostics.length > 0 && <div className="diagnostic-list">{diagnostics.slice(0, 8).map((entry) => <details key={entry.id} className={entry.level}><summary><time>{new Date(entry.timestamp).toLocaleString()}</time><b>{entry.area}</b><span>{entry.message}</span></summary>{entry.context !== undefined && <pre>{JSON.stringify(entry.context, null, 2)}</pre>}</details>)}</div>}

@@ -72,18 +72,29 @@ export type KernelRequest = {
 export type KernelFeatureDiagnostic = FeatureDiagnostic
 
 export type KernelMesh = {
-  vertices: number[]
-  normals: number[]
-  triangles: number[]
+  vertices: Float32Array
+  normals: Float32Array
+  triangles: Uint32Array
   faceGroups: { start: number; count: number; faceId: number }[]
-  edgeLines: number[]
+  edgeLines: Float32Array
   edgeGroups: { start: number; count: number; edgeId: number }[]
   /** Features skipped to produce this mesh. Empty when everything applied. */
   unresolved: KernelFeatureDiagnostic[]
 }
 
+export type ViewportMeshResult =
+  | { status: 'ready'; mesh: KernelMesh }
+  | { status: 'superseded' }
+
+export type KernelWorkerTimings = {
+  initializationMs: number
+  evaluationMs: number
+  outputMs: number
+  responseBytes: number
+}
+
 export type KernelResponse =
-  | { id: number; ok: true; type: 'mesh'; mesh: KernelMesh }
-  | { id: number; ok: true; type: KernelExportFormat; bytes: Uint8Array }
-  | { id: number; ok: true; type: 'projection'; views: ProjectedView[]; unresolved: KernelFeatureDiagnostic[] }
-  | { id: number; ok: false; error: string }
+  | { id: number; ok: true; type: 'mesh'; mesh: KernelMesh; timings?: KernelWorkerTimings }
+  | { id: number; ok: true; type: KernelExportFormat; bytes: Uint8Array; timings?: KernelWorkerTimings }
+  | { id: number; ok: true; type: 'projection'; views: ProjectedView[]; unresolved: KernelFeatureDiagnostic[]; timings?: KernelWorkerTimings }
+  | { id: number; ok: false; error: string; timings?: KernelWorkerTimings }

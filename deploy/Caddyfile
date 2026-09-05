@@ -1,0 +1,17 @@
+{
+  auto_https off
+}
+
+:8080 {
+  root * {$PARALLAX_ROOT:/srv/parallax/dist}
+  encode zstd gzip
+
+  @immutable path /assets/*
+  header @immutable Cache-Control "public, max-age=31536000, immutable"
+
+  @entry path / /index.html /manifest.webmanifest /service-worker.js
+  header @entry Cache-Control "no-cache"
+
+  try_files {path} /index.html
+  file_server
+}

@@ -103,7 +103,7 @@ export function createModelEdges(host: THREE.Object3D, positions: THREE.Float32B
 }
 
 /** Replace a solid's drawn edges and edge source with an exact-kernel result. */
-export function updateModelEdges(host: THREE.Object3D, edges: LineSegments2, edgeLines: number[], edgeGroups: { start: number; count: number }[]): void {
+export function updateModelEdges(host: THREE.Object3D, edges: LineSegments2, edgeLines: Float32Array, edgeGroups: { start: number; count: number }[]): void {
   edges.geometry.dispose()
   const geometry = new LineSegmentsGeometry()
   if (edgeLines.length >= 6) geometry.setPositions(edgeLines)

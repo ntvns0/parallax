@@ -10,7 +10,7 @@ describe('ExactEdgeIndex', () => {
   })
 
   it('indexes edges from a mesh with edgeLines and finds closest edge', () => {
-    const edgeLines = [
+    const edgeLines = new Float32Array([
       0, 0, 0, 10, 0, 0,
       10, 0, 0, 10, 10, 0,
       10, 10, 0, 0, 10, 0,
@@ -25,12 +25,12 @@ describe('ExactEdgeIndex', () => {
       10, 0, 0, 10, 0, 10,
       10, 10, 0, 10, 10, 10,
       0, 10, 0, 0, 10, 10,
-    ]
+    ])
 
     const mockMesh: KernelMesh = {
-      vertices: [],
-      normals: [],
-      triangles: [],
+      vertices: new Float32Array(),
+      normals: new Float32Array(),
+      triangles: new Uint32Array(),
       edgeLines,
       faceGroups: [],
       edgeGroups: [],

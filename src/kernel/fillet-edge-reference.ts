@@ -256,7 +256,7 @@ export function completeCornerVertexFillets(
 }
 
 /** Extract edge geometries from a kernel mesh representation. */
-export function extractMeshEdges(mesh: { edgeLines: number[]; edgeGroups?: { start: number; count: number; edgeId: number }[] }): EdgeGeometry[] {
+export function extractMeshEdges(mesh: { edgeLines: ArrayLike<number>; edgeGroups?: { start: number; count: number; edgeId: number }[] }): EdgeGeometry[] {
   const result: EdgeGeometry[] = []
   const { edgeLines, edgeGroups } = mesh
   if (!edgeLines || !edgeLines.length) return result

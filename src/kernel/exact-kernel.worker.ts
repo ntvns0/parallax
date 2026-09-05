@@ -3,21 +3,48 @@
 import initOpenCascade from 'replicad-opencascadejs/src/replicad_single.js'
 import openCascadeWasm from 'replicad-opencascadejs/src/replicad_single.wasm?url'
 import { setOC, type Shape3D } from 'replicad'
-import type { KernelRequest, KernelResponse } from './kernel-types'
+import type { KernelRequest, KernelResponse, KernelWorkerTimings } from './kernel-types'
 import { evaluateOperations, step } from './evaluate-chain'
 import { projectViews } from './projection'
 
 let initialization: Promise<void> | null = null
+let initializationDurationMs = 0
 
 function initialize() {
   if (!initialization) {
     initialization = (async () => {
+      const startedAt = performance.now()
       const init = initOpenCascade as unknown as (config: { locateFile: () => string }) => Promise<Parameters<typeof setOC>[0]>
       const oc = await init({ locateFile: () => openCascadeWasm })
       setOC(oc)
+      initializationDurationMs = performance.now() - startedAt
     })()
   }
   return initialization
+}
+
+function transferableMesh(values: {
+  vertices: number[]
+  normals: number[]
+  triangles: number[]
+  edgeLines: number[]
+}) {
+  if (values.vertices.length % 3 !== 0 || values.normals.length !== values.vertices.length) {
+    throw new Error('OpenCascade returned malformed vertex or normal data.')
+  }
+  if (values.edgeLines.length % 3 !== 0) throw new Error('OpenCascade returned malformed edge data.')
+  const vertexCount = values.vertices.length / 3
+  for (const index of values.triangles) {
+    if (!Number.isInteger(index) || index < 0 || index >= vertexCount || index > 0xffff_ffff) {
+      throw new Error('OpenCascade returned an invalid triangle index.')
+    }
+  }
+  return {
+    vertices: new Float32Array(values.vertices),
+    normals: new Float32Array(values.normals),
+    triangles: new Uint32Array(values.triangles),
+    edgeLines: new Float32Array(values.edgeLines),
+  }
 }
 
 /**
@@ -37,9 +64,24 @@ self.onmessage = (event: MessageEvent<KernelRequest>) => {
 async function handle(request: KernelRequest): Promise<void> {
   let shape: Shape3D | null = null
   let release = () => {}
+  let evaluationMs = 0
+  let requestInitializationMs = 0
+  let outputStartedAt = performance.now()
+  let responseBytes = 0
+  const timings = (): KernelWorkerTimings => ({
+    initializationMs: requestInitializationMs,
+    evaluationMs,
+    outputMs: performance.now() - outputStartedAt,
+    responseBytes,
+  })
   try {
+    const wasInitialized = initialization !== null
     await initialize()
+    requestInitializationMs = wasInitialized ? 0 : initializationDurationMs
+    const evaluationStartedAt = performance.now()
     const evaluation = evaluateOperations(request.operations)
+    evaluationMs = performance.now() - evaluationStartedAt
+    outputStartedAt = performance.now()
     shape = evaluation.shape
     release = evaluation.release
     const { unresolved } = evaluation
@@ -48,7 +90,7 @@ async function handle(request: KernelRequest): Promise<void> {
       const solid: Shape3D = shape
       const projection = request.projection ?? { views: ['front', 'top', 'right', 'iso'], hiddenLines: true }
       const views = step('project', () => projectViews(solid, projection.views, projection.hiddenLines, projection.section))
-      const response: KernelResponse = { id: request.id, ok: true, type: 'projection', views, unresolved }
+      const response: KernelResponse = { id: request.id, ok: true, type: 'projection', views, unresolved, timings: timings() }
       self.postMessage(response)
       return
     }
@@ -58,7 +100,8 @@ async function handle(request: KernelRequest): Promise<void> {
         ? shape.blobSTEP()
         : shape.blobSTL({ tolerance: 0.02, angularTolerance: 0.08, binary: true })
       const bytes = new Uint8Array(await blob.arrayBuffer())
-      const response: KernelResponse = { id: request.id, ok: true, type: request.output, bytes }
+      responseBytes = bytes.byteLength
+      const response: KernelResponse = { id: request.id, ok: true, type: request.output, bytes, timings: timings() }
       self.postMessage(response, { transfer: [bytes.buffer] })
       return
     }
@@ -68,26 +111,39 @@ async function handle(request: KernelRequest): Promise<void> {
     if (!mesh.vertices.length || !mesh.triangles.length) {
       throw new Error('The selected-edge fillet produced an empty solid. Reduce the radius or choose a different edge.')
     }
+    const arrays = transferableMesh({
+      vertices: mesh.vertices,
+      normals: mesh.normals,
+      triangles: mesh.triangles,
+      edgeLines: edges.lines,
+    })
     const response: KernelResponse = {
       id: request.id,
       ok: true,
       type: 'mesh',
       mesh: {
-        vertices: mesh.vertices,
-        normals: mesh.normals,
-        triangles: mesh.triangles,
+        vertices: arrays.vertices,
+        normals: arrays.normals,
+        triangles: arrays.triangles,
         faceGroups: mesh.faceGroups,
-        edgeLines: edges.lines,
+        edgeLines: arrays.edgeLines,
         edgeGroups: edges.edgeGroups,
         unresolved,
       },
+      timings: (() => {
+        responseBytes = arrays.vertices.byteLength + arrays.normals.byteLength + arrays.triangles.byteLength + arrays.edgeLines.byteLength
+        return timings()
+      })(),
     }
-    self.postMessage(response)
+    self.postMessage(response, {
+      transfer: [arrays.vertices.buffer, arrays.normals.buffer, arrays.triangles.buffer, arrays.edgeLines.buffer],
+    })
   } catch (error) {
     const response: KernelResponse = {
       id: request.id,
       ok: false,
       error: error instanceof Error ? error.message : String(error),
+      timings: timings(),
     }
     self.postMessage(response)
   } finally {

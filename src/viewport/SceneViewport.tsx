@@ -23,7 +23,7 @@ import {
   type MeasurementSnapType,
   type MeasurementState,
 } from '../core/measurement'
-import { evaluateExactExtrude, kernelMeshToGeometry } from '../kernel/exact-kernel'
+import { evaluateViewportMesh, kernelMeshToGeometry } from '../kernel/exact-kernel'
 import { classifyFaceNormal, projectToSketchPlane, sketchPlaneOffset } from './face-classification'
 import { isSolid, planSolidRender } from './render-plan'
 import { useViewportStore } from './viewport-store'
@@ -740,7 +740,9 @@ export function SceneViewport({
             : undefined
           if (feature.kind !== 'fillet' && feature.operation !== 'newBody') addPendingGhost(feature, state.document.features)
           if (feature.kind === 'fillet' || sketch?.kind === 'sketch') {
-            void evaluateExactExtrude(feature, sketch?.kind === 'sketch' ? sketch : undefined, state.document.features).then((exactMesh) => {
+            void evaluateViewportMesh(feature, sketch?.kind === 'sketch' ? sketch : undefined, state.document.features).then((result) => {
+              if (result.status === 'superseded') return
+              const exactMesh = result.mesh
               if (generation !== rebuildGeneration || meshes.get(feature.id) !== mesh) return
               for (const supersededId of plan.supersedes.get(feature.id) ?? []) {
                 const previousMesh = meshes.get(supersededId)

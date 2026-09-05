@@ -108,7 +108,7 @@ describe('connected edge propagation and corner completion', () => {
 
   it('extracts edge geometries from kernel mesh representation', () => {
     const mesh = {
-      edgeLines: [0, 0, 10, 40, 0, 10, 0, 0, 10, 0, 40, 10],
+      edgeLines: new Float32Array([0, 0, 10, 40, 0, 10, 0, 0, 10, 0, 40, 10]),
       edgeGroups: [
         { start: 0, count: 2, edgeId: 1 },
       ],

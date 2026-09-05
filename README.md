@@ -78,8 +78,36 @@ npm run lint      # Run ESLint
 npm test          # Run document, sketch, and persistence regression tests
 npm run bench     # Benchmark a deterministic 250-step modeling history
 npm run check:bundle # Enforce JavaScript and WebAssembly size budgets
+npm run check:dist   # Verify the production and offline artifact
 npm run preview   # Preview the production build
+npm run serve:dist # Serve dist with production-like caching headers
+npm run test:e2e  # Test the production build and offline reload in Chromium
 ```
+
+## Deploy on a small host
+
+The host does not evaluate models. Build Parallax once, copy `dist/` to the host,
+and serve those static files. OpenCascade, PlaneGCS, Three.js, exports, and project
+storage all run in each visiting browser.
+
+An example [Caddy configuration](./deploy/Caddyfile) serves `dist/` on port 8080
+with compression, immutable caching for hashed assets, and revalidation for the
+application entry files. Set `PARALLAX_ROOT` to the checkout or release directory:
+
+```bash
+npm ci
+npm run build
+PARALLAX_ROOT=/srv/parallax caddy run --config deploy/Caddyfile
+```
+
+Put that listener behind the portfolio site's existing HTTPS or a Tailscale HTTPS
+endpoint. Keep the public origin stable because IndexedDB projects belong to an
+origin. Changing the scheme, hostname, or port creates a separate local project
+store in the browser.
+
+The generated service worker caches the application shell and both WebAssembly
+kernels. A new build waits until the user accepts the in-app reload prompt, so an
+open modeling session never mixes application and kernel versions.
 
 ## Architecture
 

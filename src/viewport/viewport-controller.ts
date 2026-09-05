@@ -10,6 +10,8 @@ import { fitCameraToRadius } from './camera-fit'
 import { fogDensityForRadius } from './fog-fit'
 import { setEdgeResolution } from './model-edges'
 import { ambientOcclusionRadius } from './ao-fit'
+import { clientRuntime } from '../runtime/client-runtime'
+import { recordPerformance } from '../runtime/performance'
 
 export type CameraView =
   | 'home'
@@ -55,6 +57,13 @@ export class ViewportController {
   private lastModelBounds = { center: new THREE.Vector3(0, 0, 0), radius: 60 }
   private onCameraDistanceCallback?: (distance: number) => void
   private lastReportedDistance = 0
+  private readonly handleContextLost = (event: Event) => {
+    event.preventDefault()
+    recordPerformance('webgl.context-lost', performance.now())
+  }
+  private readonly handleContextRestored = () => {
+    recordPerformance('webgl.context-restored', performance.now())
+  }
 
   constructor(host: HTMLElement, options?: { onCameraDistanceChange?: (distance: number) => void }) {
     this.onCameraDistanceCallback = options?.onCameraDistanceChange
@@ -68,11 +77,13 @@ export class ViewportController {
     this.camera.up.set(0, 0, 1)
 
     this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' })
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, clientRuntime.policy.render.maxPixelRatio))
     this.renderer.outputColorSpace = THREE.SRGBColorSpace
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping
     this.renderer.toneMappingExposure = 1.15
     host.appendChild(this.renderer.domElement)
+    this.renderer.domElement.addEventListener('webglcontextlost', this.handleContextLost)
+    this.renderer.domElement.addEventListener('webglcontextrestored', this.handleContextRestored)
 
     this.orbit = new OrbitControls(this.camera, this.renderer.domElement)
     this.orbit.enableDamping = true
@@ -147,7 +158,7 @@ export class ViewportController {
         distanceExponent: 1,
         thickness: 1,
         scale: 1,
-        samples: 16,
+        samples: clientRuntime.policy.render.ambientOcclusionSamples,
       })
       composer.addPass(ao)
       composer.addPass(new OutputPass())
@@ -366,6 +377,8 @@ export class ViewportController {
     this.resizeObserver?.disconnect()
     this.orbit.dispose()
     this.composer?.dispose()
+    this.renderer.domElement.removeEventListener('webglcontextlost', this.handleContextLost)
+    this.renderer.domElement.removeEventListener('webglcontextrestored', this.handleContextRestored)
     this.renderer.dispose()
     if (this.renderer.domElement.parentNode) {
       this.renderer.domElement.parentNode.removeChild(this.renderer.domElement)

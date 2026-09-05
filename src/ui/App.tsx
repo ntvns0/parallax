@@ -30,6 +30,7 @@ import { INITIAL_INTERACTION_MODE, interactionModeReducer } from './interaction-
 import { CommandPalette, HelpDialog, MeasurementPanel, PlanePicker, ProjectMenu, SettingsDialog } from './ProjectDialogs'
 import { PropertiesPanel } from './PropertyPanel'
 import { EmptyState, IconButton, ModelToolbar, ViewCube } from './Toolbar'
+import { activateClientUpdate } from '../runtime/client-runtime'
 
 /**
  * Drawing production — projection, sheet layout, and the PDF writer — is loaded
@@ -67,6 +68,7 @@ export function App() {
   const [commandOpen, setCommandOpen] = useState(false)
   const [drawingOpen, setDrawingOpen] = useState(false)
   const [notice, setNotice] = useState<{ tone: 'success' | 'error'; message: string } | null>(null)
+  const [updateReady, setUpdateReady] = useState(false)
 
   const selectedFeature = document.features.find((feature) => feature.id === selectedId) ?? null
   const canPickSketchFace = document.features.some((feature) => feature.visible && feature.kind !== 'sketch')
@@ -197,6 +199,12 @@ export function App() {
   }, [])
 
   useEffect(() => {
+    const onUpdateReady = () => setUpdateReady(true)
+    window.addEventListener('parallax:update-ready', onUpdateReady)
+    return () => window.removeEventListener('parallax:update-ready', onUpdateReady)
+  }, [])
+
+  useEffect(() => {
     function onWindowError(event: ErrorEvent) {
       logDiagnostic('error', 'Application', event.message || 'Unhandled browser error', { filename: event.filename, line: event.lineno, column: event.colno, stack: event.error instanceof Error ? event.error.stack : undefined })
     }
@@ -278,6 +286,11 @@ export function App() {
           }}><X /></button>
         </div>
       )}
+      {updateReady && <div className={`app-notice success${activeSketchId ? ' during-sketch' : ''}`} role="status">
+        <span>A new Parallax build is ready.</span>
+        <button onClick={() => void activateClientUpdate()}>Reload to update</button>
+        <button aria-label="Dismiss update notification" onClick={() => setUpdateReady(false)}><X /></button>
+      </div>}
 
       <section className="workspace">
         <FeaturePanel onMenu={() => setCommandOpen(true)} />
