@@ -1,6 +1,6 @@
 import { ChevronDown, Eye, EyeOff } from 'lucide-react'
 import { useDocumentStore } from '../core/document-store'
-import { collectFaceReferenceDiagnostics, useFeatureDiagnosticsStore } from '../core/diagnostics'
+import { collectDocumentDiagnostics, useFeatureDiagnosticsStore } from '../core/diagnostics'
 import type { FeatureKind } from '../core/model'
 import { BoxFeatureIcon, CylinderFeatureIcon, ExtrudeFeatureIcon, FilletFeatureIcon, RevolveFeatureIcon, SketchFeatureIcon, SphereFeatureIcon } from './icons'
 import { ParametersSection } from './ParametersPanel'
@@ -20,7 +20,7 @@ export function FeaturePanel({ onMenu }: { onMenu: () => void }) {
   const selectedId = useDocumentStore((state) => state.selectedId)
   const unresolved = useFeatureDiagnosticsStore((state) => state.unresolved)
   const formulaDiagnostics = useDocumentStore((state) => state.formulaDiagnostics)
-  const faceDiagnostics = collectFaceReferenceDiagnostics(features)
+  const documentDiagnostics = collectDocumentDiagnostics(features)
   return (
     <aside className="panel feature-panel">
       <div className="panel-header"><span>FEATURES</span><button aria-label="Open feature commands" onClick={onMenu}>•••</button></div>
@@ -33,7 +33,7 @@ export function FeaturePanel({ onMenu }: { onMenu: () => void }) {
       <div className="feature-list">
         {features.map((feature) => {
           const Icon = featureIcons[feature.kind]
-          const warning = unresolved[feature.id] ?? faceDiagnostics[feature.id] ?? formulaDiagnostics[feature.id]
+          const warning = unresolved[feature.id] ?? documentDiagnostics[feature.id] ?? formulaDiagnostics[feature.id]
           return (
             <div
               key={feature.id}

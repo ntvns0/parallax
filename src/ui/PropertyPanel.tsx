@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Download, MousePointer2, Trash2 } from 'lucide-react'
 import { useDocumentStore } from '../core/document-store'
-import { collectFaceReferenceDiagnostics, findDiagnosticRepair, useFeatureDiagnosticsStore } from '../core/diagnostics'
+import { collectDocumentDiagnostics, collectOpenProfileDiagnostics, findDiagnosticRepair, useFeatureDiagnosticsStore } from '../core/diagnostics'
 import type { Feature, FilletCornerStyle, FilletProfileShape, Vec3 } from '../core/model'
 import { getProfileRegions, sketchBounds } from '../core/sketch'
 import { formatLength, formatLengthInput, parseLengthInput, unitLabel } from '../core/units'
@@ -126,6 +126,24 @@ function PropertyIdentity({ feature }: { feature: Feature }) {
   )
 }
 
+/** A sweep the operation chain is skipping because its sketch came apart. */
+function OpenProfileWarning({ feature }: { feature: Feature }) {
+  const features = useDocumentStore((state) => state.document.features)
+  const diagnostic = collectOpenProfileDiagnostics(features)[feature.id]
+  const repair = diagnostic && findDiagnosticRepair(diagnostic, 'edit-sketch')
+  if (!diagnostic) return null
+  return (
+    <div className="dependency-warning">
+      <span>{diagnostic.message}</span>
+      {repair && (
+        <button type="button" onClick={() => useDocumentStore.getState().beginSketch(repair.sketchId)}>
+          {repair.label}
+        </button>
+      )}
+    </div>
+  )
+}
+
 /**
  * A formula on this feature that no longer evaluates.
  *
@@ -203,7 +221,7 @@ function SketchProperties({ feature }: { feature: Extract<Feature, { kind: 'sket
   const displayUnits = useDocumentStore((state) => state.document.displayUnits ?? 'mm')
   const dependents = features.filter((candidate) => candidate.kind === 'extrude' && candidate.sketchId === feature.id)
   const evaluatedWarning = useFeatureDiagnosticsStore((state) => state.unresolved[feature.id])
-  const referenceWarning = evaluatedWarning ?? collectFaceReferenceDiagnostics(features)[feature.id]
+  const referenceWarning = evaluatedWarning ?? collectDocumentDiagnostics(features)[feature.id]
   return (
     <aside className="panel properties-panel">
       <div className="panel-header"><span>SKETCH</span><button aria-label="Close properties" onClick={() => useDocumentStore.getState().select(null)}>×</button></div>
@@ -294,6 +312,7 @@ function ExtrudeProperties({ feature }: { feature: Extract<Feature, { kind: 'ext
         <span>Kernel</span><strong>OpenCascade B-rep</strong>
       </div>
       {source?.kind !== 'sketch' && <div className="dependency-warning">The source sketch is missing. Restore it from Project recovery or delete this broken feature.</div>}
+      <OpenProfileWarning feature={feature} />
       {exportState.status !== 'idle' && <div className={`inline-operation ${exportState.status}`}>{exportState.message}</div>}
       <div className="property-section export-section"><h3>Export solid</h3><small>STEP preserves editable B-rep geometry. Binary STL is broadly compatible and uses millimeter coordinates.</small></div>
       <button className="panel-action primary" disabled={source?.kind !== 'sketch' || exportState.status === 'loading'} onClick={() => downloadSolid('step')}><Download /> Export STEP</button>
@@ -405,6 +424,7 @@ function RevolveProperties({ feature }: { feature: Extract<Feature, { kind: 'rev
       </div>
       <div className="property-section feature-info"><span>Profile</span><strong>{source?.name ?? 'Missing sketch'}</strong><span>Operation</span><strong>{feature.operation === 'newBody' ? 'New body' : feature.operation === 'add' ? 'Boolean add' : 'Boolean cut'}</strong><span>Kernel</span><strong>OpenCascade B-rep</strong></div>
       {source?.kind !== 'sketch' && <div className="dependency-warning">The source sketch is missing. Restore it from Project recovery or delete this broken feature.</div>}
+      <OpenProfileWarning feature={feature} />
       {exportState.status !== 'idle' && <div className={`inline-operation ${exportState.status}`}>{exportState.message}</div>}
       <div className="property-section export-section"><h3>Export solid</h3><small>STEP preserves editable B-rep geometry. Binary STL is broadly compatible and uses millimeter coordinates.</small></div>
       <button className="panel-action primary" disabled={source?.kind !== 'sketch' || exportState.status === 'loading'} onClick={() => downloadSolid('step')}><Download /> Export STEP</button>

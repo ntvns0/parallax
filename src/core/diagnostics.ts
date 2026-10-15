@@ -1,5 +1,6 @@
 import { resolveFaceOffset } from './face-anchor'
 import type { Feature } from './model'
+import { getProfileRegions } from './sketch'
 import { create } from 'zustand'
 
 export type DiagnosticLevel = 'info' | 'warning' | 'error'
@@ -9,7 +10,7 @@ export type FeatureDiagnostic = {
   featureId: string
   featureName: string
   severity: 'warning' | 'error'
-  code: 'unresolved-edge' | 'unresolved-face' | 'constraint-conflict' | 'oversized-fillet' | 'invalid-formula'
+  code: 'unresolved-edge' | 'unresolved-face' | 'constraint-conflict' | 'oversized-fillet' | 'invalid-formula' | 'open-profile'
   reason: 'missing' | 'moved' | 'invalid' | 'conflicting' | 'limit-exceeded'
   subject: { kind: 'edge' | 'face' | 'constraint' | 'parameter' | 'feature'; id?: string; label: string }
   message: string
@@ -26,6 +27,8 @@ export type DiagnosticRepair =
   | { kind: 'apply-radius'; label: string; value: number }
   /** Drop a formula that no longer evaluates, keeping the last value it produced. */
   | { kind: 'clear-formula'; label: string; featureId: string; key: string }
+  /** Open a sketch for editing, to close a profile that came apart. */
+  | { kind: 'edit-sketch'; label: string; sketchId: string }
 
 export const useFeatureDiagnosticsStore = create<{ unresolved: Record<string, FeatureDiagnostic> }>(() => ({ unresolved: {} }))
 
@@ -71,6 +74,41 @@ export function collectFaceReferenceDiagnostics(features: Feature[]): Record<str
     }
   }
   return found
+}
+
+/**
+ * Sweeps whose sketch no longer forms a closed profile.
+ *
+ * The operation chain has nothing to sweep for these and skips them, so the
+ * part loses the feature with no error from the kernel. A dimension change that
+ * pulls two ends apart is enough to cause it.
+ */
+export function collectOpenProfileDiagnostics(features: Feature[]): Record<string, FeatureDiagnostic> {
+  const found: Record<string, FeatureDiagnostic> = {}
+  const closed = new Map<string, boolean>()
+  for (const feature of features) {
+    if (feature.kind !== 'extrude' && feature.kind !== 'revolve') continue
+    const sketch = features.find((candidate) => candidate.id === feature.sketchId)
+    if (sketch?.kind !== 'sketch') continue
+    if (!closed.has(sketch.id)) closed.set(sketch.id, getProfileRegions(sketch).length > 0)
+    if (closed.get(sketch.id)) continue
+    found[feature.id] = {
+      featureId: feature.id,
+      featureName: feature.name,
+      severity: 'warning',
+      code: 'open-profile',
+      reason: 'invalid',
+      subject: { kind: 'feature', id: sketch.id, label: sketch.name },
+      message: `${feature.name} is skipped: ${sketch.name} no longer forms a closed profile, so there is nothing to ${feature.kind}. Edit the sketch and join its ends.`,
+      repairs: [{ kind: 'edit-sketch', label: `Edit ${sketch.name}`, sketchId: sketch.id }],
+    }
+  }
+  return found
+}
+
+/** Every feature problem the document alone can reveal, without the kernel. */
+export function collectDocumentDiagnostics(features: Feature[]): Record<string, FeatureDiagnostic> {
+  return { ...collectOpenProfileDiagnostics(features), ...collectFaceReferenceDiagnostics(features) }
 }
 
 export type DiagnosticEntry = {
