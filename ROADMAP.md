@@ -229,10 +229,27 @@ Then the move is a render-surface swap instead of a rewrite.
     direction but kept its length, so a level line dragged to 30 mm came out
     √901 ≈ 30.017 mm long. Line length now snaps in every mode
     (`line-inference.test.ts`).
-- ⬜ **2.2 Split `SceneViewport.tsx` (1,450 lines).** Separate picking, the
-  measure overlay, push/pull, and face selection into units that receive the
-  `ViewportController` rather than reaching through component state. Same proof
-  as 2.1.
+- ✅ **2.2 Split `SceneViewport.tsx`.** Done. It went from 1,450 lines to
+  348. The component now only decides what a pointer gesture means in the
+  current mode.
+  - The work moved into units that take the controller or a
+    `ViewportPicker`: `SceneModels`, `PushPullGesture`, `MeasurementSnapper`,
+    `MeasurementOverlay`, `FaceHighlight`, and `EdgeHighlight`.
+  - The geometry they rest on is pure and tested: `face-geometry.ts`,
+    `edge-references.ts`, `ray-axis.ts`, `sketch-wire.ts`, and
+    `sketch-face-pick.ts`.
+  - Camera commands and orientation reports go through the typed
+    `camera-commands.ts` instead of `window` events.
+    `parallax:look-at-normal` had a listener and no sender, so it and
+    `lookAtNormal` were deleted.
+  - Proof: `e2e/viewport-interactions.spec.ts` covers pulling a face (one undo
+    step), picking a face to sketch on, measuring, and picking a fillet edge.
+    It was committed first and passed on the unsplit viewport.
+  - That test found a limit worth knowing. Finishing a sketch leaves the
+    camera looking straight down the face normal. From there a face cannot be
+    pulled, because the pointer ray is parallel to the pull axis and gives no
+    distance (`ray-axis.test.ts`). A screen-space fallback for head-on pulls
+    is open.
 - ✅ **2.2a Render on demand.** Done. `viewport/frame-scheduler.ts` draws a
   frame only when the camera moved (orbit damping included) or something asked
   for one.
@@ -274,7 +291,8 @@ Then the move is a render-surface swap instead of a rewrite.
   controls, picking, and the GTAO pass all have to handle both camera types.
 
 **Exit:** the part stays visible and aligned while sketching (done), and both
-large files are below 600 lines.
+large files are below 600 lines (done: 592 and 348). What remains in the phase
+is 2.5 and 2.6. 2.4 is optional.
 
 ### Phase 3 — The features the acceptance parts need
 
@@ -629,8 +647,8 @@ These are implementation-shaping notes from a code review, not committed feature
 
 ### Highest-leverage boundaries
 
-- ✅ Split `SceneViewport.tsx` into a Three.js runtime/controller, exact-mesh scene adapter, picking/selection service, and measurement/overlay components.
-- ✅ Give the viewport a typed controller API (for camera commands, selection modes, and callbacks) instead of coupling `App`, `ViewCube`, and `SceneViewport` through `window` `CustomEvent`s and mutable callback refs.
+- ✅ Split `SceneViewport.tsx` into a Three.js runtime/controller, exact-mesh scene adapter, picking/selection service, and measurement/overlay components. *(Marked done in August while the file was still 1,450 lines; actually done in October as plan item 2.2.)*
+- ✅ Give the viewport a typed controller API (for camera commands, selection modes, and callbacks) instead of coupling `App`, `ViewCube`, and `SceneViewport` through `window` `CustomEvent`s and mutable callback refs. *(Also marked early. The camera still ran on `window` events until 2.2 added `camera-commands.ts`.)*
 - ✅ Replace the collection of mutually exclusive app interaction booleans with a discriminated interaction-mode state machine/reducer: idle, face selection, fillet edge selection, measurement, sketch entry, etc. Centralize cancel/Escape and cleanup so incompatible modes cannot overlap.
 - ✅ Break `App.tsx` into app shell, command definitions, project dialogs, feature tree, toolbar, and per-feature property panels. Keep presentation components fed by typed commands/selectors rather than reaching into the Zustand singleton throughout the UI.
 

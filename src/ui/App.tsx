@@ -31,6 +31,7 @@ import { CommandPalette, HelpDialog, MeasurementPanel, PlanePicker, ProjectMenu,
 import { PropertiesPanel } from './PropertyPanel'
 import { EmptyState, IconButton, ModelToolbar, ViewCube } from './Toolbar'
 import { activateClientUpdate } from '../runtime/client-runtime'
+import { sendCameraCommand } from '../viewport/camera-commands'
 
 /**
  * Drawing production — projection, sheet layout, and the PDF writer — is loaded
@@ -182,7 +183,7 @@ export function App() {
         setCommandOpen((open) => !open)
       } else if (event.key.toLowerCase() === 'f' && !editing && !event.metaKey && !event.ctrlKey && !event.altKey) {
         event.preventDefault()
-        window.dispatchEvent(new CustomEvent('parallax:set-view', { detail: 'fit' }))
+        sendCameraCommand({ kind: 'view', view: 'fit' })
       } else if ((event.key === 'Delete' || event.key === 'Backspace') && !editing) {
         useDocumentStore.getState().removeSelected()
       } else if (event.key === 'Escape') {

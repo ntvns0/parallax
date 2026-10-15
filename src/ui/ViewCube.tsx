@@ -9,12 +9,14 @@ import {
   RotateCw,
 } from 'lucide-react'
 import { useViewportStore } from '../viewport/viewport-store'
+import { onCameraOrientation, sendCameraCommand } from '../viewport/camera-commands'
+import type { CameraView } from '../viewport/viewport-controller'
 
 interface ViewZone {
   label: string
   direction: [number, number, number]
   up?: [number, number, number]
-  view?: string
+  view?: CameraView
 }
 
 function createFaceTexture(label: string): THREE.CanvasTexture {
@@ -106,17 +108,9 @@ export function ViewCube() {
   const projectionMode = useViewportStore((state) => state.projectionMode)
   const setProjectionMode = useViewportStore((state) => state.setProjectionMode)
 
-  const setView = (view: string) => {
-    window.dispatchEvent(new CustomEvent('parallax:set-view', { detail: view }))
-  }
-
-  const rollView = (deg: number) => {
-    window.dispatchEvent(new CustomEvent('parallax:roll-view', { detail: deg }))
-  }
-
-  const reverseView = () => {
-    window.dispatchEvent(new CustomEvent('parallax:reverse-view'))
-  }
+  const setView = (view: CameraView) => sendCameraCommand({ kind: 'view', view })
+  const rollView = (degrees: number) => sendCameraCommand({ kind: 'roll', degrees })
+  const reverseView = () => sendCameraCommand({ kind: 'reverse' })
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -179,7 +173,7 @@ export function ViewCube() {
     // 1. Create the 6 main faces
     const faces: Array<{
       label: string
-      view: string
+      view: CameraView
       dir: [number, number, number]
       up: [number, number, number]
       pos: [number, number, number]
@@ -255,7 +249,7 @@ export function ViewCube() {
     // 3. Create 8 corner chamfers
     const corners: Array<{
       label: string
-      view?: string
+      view?: CameraView
       dir: [number, number, number]
       pos: [number, number, number]
     }> = [
@@ -343,16 +337,11 @@ export function ViewCube() {
     // Initial render
     renderer.render(scene, camera)
 
-    // Listen to camera changes from main viewport controller
-    function onCameraChange(event: Event) {
-      const detail = (event as CustomEvent<{ quaternion: [number, number, number, number] }>).detail
-      if (detail?.quaternion) {
-        const q = new THREE.Quaternion(...detail.quaternion)
-        cubeGroup.quaternion.copy(q.invert())
-        renderer.render(scene, camera)
-      }
-    }
-    window.addEventListener('parallax:camera-change', onCameraChange)
+    // Mirror the main camera's orientation.
+    const stopFollowingCamera = onCameraOrientation((orientation) => {
+      cubeGroup.quaternion.copy(new THREE.Quaternion(...orientation).invert())
+      renderer.render(scene, camera)
+    })
 
     // Raycaster for hover & click detection
     const cv = canvas
@@ -410,11 +399,9 @@ export function ViewCube() {
       if (targetHit) {
         const data = targetHit.object.userData as ViewZone
         if (data.view) {
-          window.dispatchEvent(new CustomEvent('parallax:set-view', { detail: data.view }))
+          sendCameraCommand({ kind: 'view', view: data.view })
         } else if (data.direction) {
-          window.dispatchEvent(new CustomEvent('parallax:set-view-direction', {
-            detail: { direction: data.direction, up: data.up },
-          }))
+          sendCameraCommand({ kind: 'direction', direction: data.direction, up: data.up })
         }
       }
     }
@@ -436,7 +423,7 @@ export function ViewCube() {
     cv.addEventListener('mouseleave', onPointerLeave)
 
     return () => {
-      window.removeEventListener('parallax:camera-change', onCameraChange)
+      stopFollowingCamera()
       cv.removeEventListener('mousemove', onPointerMove)
       cv.removeEventListener('mousedown', onPointerDown)
       cv.removeEventListener('mouseup', onPointerUp)

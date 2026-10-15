@@ -13,6 +13,7 @@ import { setEdgeResolution } from './model-edges'
 import { ambientOcclusionRadius } from './ao-fit'
 import { clientRuntime } from '../runtime/client-runtime'
 import { recordPerformance } from '../runtime/performance'
+import { publishCameraOrientation } from './camera-commands'
 
 export type CameraView =
   | 'home'
@@ -214,13 +215,7 @@ export class ViewportController {
       if (cameraMoved) {
         this.lastCameraQuaternion.copy(this.camera.quaternion)
         this.lastCameraPosition.copy(this.camera.position)
-        window.dispatchEvent(new CustomEvent('parallax:camera-change', {
-          detail: {
-            quaternion: [this.camera.quaternion.x, this.camera.quaternion.y, this.camera.quaternion.z, this.camera.quaternion.w],
-            position: [this.camera.position.x, this.camera.position.y, this.camera.position.z],
-            target: [this.orbit.target.x, this.orbit.target.y, this.orbit.target.z],
-          },
-        }))
+        publishCameraOrientation([this.camera.quaternion.x, this.camera.quaternion.y, this.camera.quaternion.z, this.camera.quaternion.w])
         const distance = Math.round(this.camera.position.distanceTo(this.orbit.target))
         if (distance !== this.lastReportedDistance) {
           this.lastReportedDistance = distance
@@ -358,16 +353,6 @@ export class ViewportController {
     this.camera.position.copy(this.orbit.target).add(currentDirection)
     this.camera.lookAt(this.orbit.target)
     this.orbit.update()
-  }
-
-  lookAtNormal(normal: [number, number, number], center?: [number, number, number]): void {
-    const normVec = new THREE.Vector3(...normal).normalize()
-    if (center) {
-      this.orbit.target.set(...center)
-    }
-    const up = Math.abs(normVec.z) > 0.99 ? new THREE.Vector3(0, 1, 0) : new THREE.Vector3(0, 0, 1)
-    syncOrbitControlsUp(this.orbit, this.camera, up)
-    this.frameModel(normVec)
   }
 
   frameModel(preferredDirection?: THREE.Vector3, customBounds?: { center: THREE.Vector3; radius: number }): void {
