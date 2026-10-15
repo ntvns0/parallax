@@ -13,8 +13,13 @@ import { resolveSketchAnchor } from './sketch'
  *
  * Adding a version that needs more than defaults means adding a step here
  * rather than widening this list.
+ *
+ * Written out in full on purpose. It once ended in `CURRENT_SCHEMA_VERSION`,
+ * so a schema bump silently dropped the previous version and every project
+ * saved at it stopped opening. `schema-fixtures.test.ts` checks the list has no
+ * gaps and that each version has a saved fixture.
  */
-export const MIGRATABLE_SCHEMA_VERSIONS: number[] = [1, 2, 3, 4, 5, 6, 7, CURRENT_SCHEMA_VERSION]
+export const MIGRATABLE_SCHEMA_VERSIONS: number[] = [1, 2, 3, 4, 5, 6, 7, 8]
 
 /**
  * Before v5, a face-attached extrusion stored a positive distance and let the
@@ -55,18 +60,32 @@ function migrateFilletEdgeAnchors(document: CadDocument): CadDocument {
 }
 
 /**
- * Give face-attached sketches saved before v7 the anchor they were created
- * without, on the same reasoning as the fillet backfill above: the stored
- * offset still describes the face that produced it, so the sweep end it names
- * can be recovered from the document alone.
+ * Give face-attached sketches the anchor they were saved without, and replace
+ * one that cannot be right.
+ *
+ * Before v7 a face sketch had no anchor, and the stored offset still describes
+ * the face that produced it, so the sweep end it names can be recovered from
+ * the document alone — the same reasoning as the fillet backfill above.
+ *
+ * Only features *before* the sketch are candidates. A saved face sketch usually
+ * has its own cut, which starts exactly on the face and so matches the offset
+ * as well; an anchor naming it is circular and never moves with the host.
+ * Earlier builds made that mistake, so an anchor naming an extrusion at or
+ * after the sketch is derived again on every open rather than trusted.
  */
 function migrateFaceAnchors(document: CadDocument): CadDocument {
   return {
     ...document,
-    features: document.features.map((feature) => {
-      if (feature.kind !== 'sketch' || !feature.attachment || feature.attachment.anchor) return feature
-      const anchor = deriveFaceAnchor(feature, document.features)
-      return anchor ? { ...feature, attachment: { ...feature.attachment, anchor } } : feature
+    features: document.features.map((feature, index) => {
+      if (feature.kind !== 'sketch' || !feature.attachment) return feature
+      const earlier = document.features.slice(0, index)
+      const current = feature.attachment.anchor
+      if (current && earlier.some((candidate) => candidate.id === current.featureId)) return feature
+      const anchor = deriveFaceAnchor(feature, earlier)
+      if (!anchor && !current) return feature
+      const attachment = { ...feature.attachment, anchor }
+      if (!anchor) delete attachment.anchor
+      return { ...feature, attachment }
     }),
   }
 }
@@ -95,7 +114,7 @@ export function normalizeDocument(document: CadDocument): CadDocument {
   // Anchoring must run after the direction migration, because an anchor is
   // derived against the sweep range and that depends on the corrected sign.
   const edged = document.schemaVersion < 6 ? migrateFilletEdgeAnchors(directed) : directed
-  const faced = document.schemaVersion < 7 ? migrateFaceAnchors(edged) : edged
+  const faced = migrateFaceAnchors(edged)
   // A parameter's value is derived, never stored, so it is recomputed on open
   // rather than trusted from the file. A formula that no longer evaluates leaves
   // the last good number in place and reports itself once the UI subscribes.

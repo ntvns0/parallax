@@ -21,6 +21,7 @@ import { normalizeArc } from '../core/arc-geometry'
 import { buildOperationChain } from './operation-chain'
 import { evaluateOperations } from './evaluate-chain'
 import { edgeGeometry } from './fillet-apply'
+import { parseStoredDocument } from '../core/document-migration'
 
 /**
  * Golden parts: whole documents taken through the real kernel and checked
@@ -301,5 +302,21 @@ describe('golden parts', () => {
     const volume = volumeOf([sketch, extrudeOf(sketch, 5)])
 
     expect(volume).toBeCloseTo((60 * 60 - Math.PI * 400 + Math.PI * 64) * 5, 5)
+  })
+
+  it.each([4, 5, 6, 7, 8])('rebuilds the saved v%i schema fixture', (version) => {
+    // The pocketed plate from `core/fixtures`, opened through migration. A
+    // 40 x 30 x 6 plate, less a 20 x 12 x 4 pocket, plus what an R2 fillet
+    // adds back in one concave corner of that pocket: the square r² less its
+    // quarter circle, over the 4 mm depth.
+    const raw = readFileSync(resolve(process.cwd(), `src/core/fixtures/schema-v${version}.parallax.json`), 'utf8')
+    const document = parseStoredDocument(raw)
+    if (!document) throw new Error(`The v${version} fixture did not open.`)
+
+    const part = inspect(document.features)
+
+    expect(part.volume).toBeCloseTo(40 * 30 * 6 - 20 * 12 * 4 + (4 - Math.PI) * 4, 4)
+    expectPoint(part.bounds.min.map((value) => Math.round(value * 1000) / 1000), [-20, -15, 0])
+    expectPoint(part.bounds.max.map((value) => Math.round(value * 1000) / 1000), [20, 15, 6])
   })
 })

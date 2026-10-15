@@ -194,4 +194,31 @@ describe('migration', () => {
     expect(sketch?.kind === 'sketch' && sketch.attachment?.anchor)
       .toEqual({ kind: 'extrudeCap', featureId: extrude.id, depth: 1 })
   })
+
+  it('anchors to the host, not to a pocket cut from the sketch itself', () => {
+    // A saved face sketch usually already has its own cut. That cut starts
+    // exactly on the face, so it matches the offset too — but anchoring to it
+    // is circular, and the sketch would stop following the plate underneath.
+    const { extrude, onFace, features } = plateWithFaceSketch()
+    features.push(createExtrudeFeature(onFace.id, 2, -4))
+    const stored = { schemaVersion: 6, id: 'doc', name: 'Part', displayUnits: 'mm', features } as unknown as CadDocument
+
+    const migrated = normalizeDocument(stored)
+    const sketch = migrated.features.find((feature) => feature.id === onFace.id)
+    expect(sketch?.kind === 'sketch' && sketch.attachment?.anchor)
+      .toEqual({ kind: 'extrudeCap', featureId: extrude.id, depth: 1 })
+  })
+
+  it('repairs a circular anchor an earlier migration already saved', () => {
+    const { extrude, onFace, features } = plateWithFaceSketch()
+    const pocket = createExtrudeFeature(onFace.id, 2, -4)
+    features.push(pocket)
+    onFace.attachment!.anchor = { kind: 'extrudeCap', featureId: pocket.id, depth: 0 }
+    const stored = { schemaVersion: 8, id: 'doc', name: 'Part', displayUnits: 'mm', parameters: [], features } as unknown as CadDocument
+
+    const migrated = normalizeDocument(stored)
+    const sketch = migrated.features.find((feature) => feature.id === onFace.id)
+    expect(sketch?.kind === 'sketch' && sketch.attachment?.anchor)
+      .toEqual({ kind: 'extrudeCap', featureId: extrude.id, depth: 1 })
+  })
 })

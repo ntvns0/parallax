@@ -1,0 +1,152 @@
+{
+  "schemaVersion": 1,
+  "id": "fixture-pocketed-plate",
+  "name": "Pocketed plate",
+  "units": "mm",
+  "features": [
+    {
+      "position": [
+        0,
+        0,
+        0
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "visible": true,
+      "id": "sketch-base",
+      "kind": "sketch",
+      "name": "Sketch 1",
+      "plane": "XY",
+      "parameters": {
+        "planeOffset": 0
+      },
+      "entities": [
+        {
+          "id": "base-l0",
+          "type": "line",
+          "start": [
+            -20,
+            -15
+          ],
+          "end": [
+            20,
+            -15
+          ],
+          "construction": false
+        },
+        {
+          "id": "base-l1",
+          "type": "line",
+          "start": [
+            20,
+            -15
+          ],
+          "end": [
+            20,
+            15
+          ],
+          "construction": false
+        },
+        {
+          "id": "base-l2",
+          "type": "line",
+          "start": [
+            20,
+            15
+          ],
+          "end": [
+            -20,
+            15
+          ],
+          "construction": false
+        },
+        {
+          "id": "base-l3",
+          "type": "line",
+          "start": [
+            -20,
+            15
+          ],
+          "end": [
+            -20,
+            -15
+          ],
+          "construction": false
+        }
+      ],
+      "constraints": [
+        {
+          "id": "base-h0",
+          "type": "horizontal",
+          "entityIds": [
+            "base-l0"
+          ]
+        },
+        {
+          "id": "base-v1",
+          "type": "vertical",
+          "entityIds": [
+            "base-l1"
+          ]
+        },
+        {
+          "id": "base-h2",
+          "type": "horizontal",
+          "entityIds": [
+            "base-l2"
+          ]
+        },
+        {
+          "id": "base-v3",
+          "type": "vertical",
+          "entityIds": [
+            "base-l3"
+          ]
+        },
+        {
+          "id": "base-width",
+          "type": "distance",
+          "entityIds": [
+            "base-l0"
+          ],
+          "value": 40
+        },
+        {
+          "id": "base-depth",
+          "type": "distance",
+          "entityIds": [
+            "base-l1"
+          ],
+          "value": 30
+        }
+      ]
+    },
+    {
+      "position": [
+        0,
+        0,
+        0
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "visible": true,
+      "id": "extrude-base",
+      "kind": "extrude",
+      "name": "Extrude 1",
+      "sketchId": "sketch-base",
+      "parameters": {
+        "distance": 6,
+        "symmetric": false,
+        "edgeRadius": 0
+      }
+    }
+  ],
+  "createdAt": "2026-01-01T00:00:00.000Z",
+  "updatedAt": "2026-10-15T00:00:00.000Z"
+}

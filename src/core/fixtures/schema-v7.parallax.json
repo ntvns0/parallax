@@ -1,0 +1,385 @@
+{
+  "schemaVersion": 7,
+  "id": "fixture-pocketed-plate",
+  "name": "Pocketed plate",
+  "units": "mm",
+  "displayUnits": "in-decimal",
+  "features": [
+    {
+      "position": [
+        0,
+        0,
+        0
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "visible": true,
+      "id": "sketch-base",
+      "kind": "sketch",
+      "name": "Sketch 1",
+      "plane": "XY",
+      "parameters": {
+        "planeOffset": 0
+      },
+      "entities": [
+        {
+          "id": "base-l0",
+          "type": "line",
+          "start": [
+            -20,
+            -15
+          ],
+          "end": [
+            20,
+            -15
+          ],
+          "construction": false
+        },
+        {
+          "id": "base-l1",
+          "type": "line",
+          "start": [
+            20,
+            -15
+          ],
+          "end": [
+            20,
+            15
+          ],
+          "construction": false
+        },
+        {
+          "id": "base-l2",
+          "type": "line",
+          "start": [
+            20,
+            15
+          ],
+          "end": [
+            -20,
+            15
+          ],
+          "construction": false
+        },
+        {
+          "id": "base-l3",
+          "type": "line",
+          "start": [
+            -20,
+            15
+          ],
+          "end": [
+            -20,
+            -15
+          ],
+          "construction": false
+        }
+      ],
+      "constraints": [
+        {
+          "id": "base-h0",
+          "type": "horizontal",
+          "entityIds": [
+            "base-l0"
+          ]
+        },
+        {
+          "id": "base-v1",
+          "type": "vertical",
+          "entityIds": [
+            "base-l1"
+          ]
+        },
+        {
+          "id": "base-h2",
+          "type": "horizontal",
+          "entityIds": [
+            "base-l2"
+          ]
+        },
+        {
+          "id": "base-v3",
+          "type": "vertical",
+          "entityIds": [
+            "base-l3"
+          ]
+        },
+        {
+          "id": "base-width",
+          "type": "distance",
+          "entityIds": [
+            "base-l0"
+          ],
+          "value": 40
+        },
+        {
+          "id": "base-depth",
+          "type": "distance",
+          "entityIds": [
+            "base-l1"
+          ],
+          "value": 30
+        }
+      ],
+      "anchor": {
+        "entityId": "base-l0",
+        "point": "start"
+      }
+    },
+    {
+      "position": [
+        0,
+        0,
+        0
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "visible": true,
+      "id": "extrude-base",
+      "kind": "extrude",
+      "name": "Extrude 1",
+      "sketchId": "sketch-base",
+      "operation": "newBody",
+      "parameters": {
+        "distance": 6,
+        "symmetric": false,
+        "edgeRadius": 0
+      }
+    },
+    {
+      "position": [
+        0,
+        0,
+        0
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "visible": true,
+      "id": "sketch-pocket",
+      "kind": "sketch",
+      "name": "Sketch 2",
+      "plane": "XY",
+      "parameters": {
+        "planeOffset": 6,
+        "faceNormalSign": 1
+      },
+      "entities": [
+        {
+          "id": "pocket-l0",
+          "type": "line",
+          "start": [
+            -10,
+            -6
+          ],
+          "end": [
+            10,
+            -6
+          ],
+          "construction": false
+        },
+        {
+          "id": "pocket-l1",
+          "type": "line",
+          "start": [
+            10,
+            -6
+          ],
+          "end": [
+            10,
+            6
+          ],
+          "construction": false
+        },
+        {
+          "id": "pocket-l2",
+          "type": "line",
+          "start": [
+            10,
+            6
+          ],
+          "end": [
+            -10,
+            6
+          ],
+          "construction": false
+        },
+        {
+          "id": "pocket-l3",
+          "type": "line",
+          "start": [
+            -10,
+            6
+          ],
+          "end": [
+            -10,
+            -6
+          ],
+          "construction": false
+        }
+      ],
+      "constraints": [
+        {
+          "id": "pocket-r",
+          "type": "distance",
+          "entityIds": [
+            "pocket-l0"
+          ],
+          "value": 20
+        }
+      ],
+      "anchor": {
+        "entityId": "pocket-l0",
+        "point": "start"
+      },
+      "attachment": {
+        "type": "face",
+        "featureId": "extrude-base",
+        "featureName": "Extrude 1",
+        "faceLabel": "Top face",
+        "center": [
+          0,
+          0
+        ],
+        "bounds": {
+          "min": [
+            -20,
+            -15
+          ],
+          "max": [
+            20,
+            15
+          ]
+        },
+        "edges": [
+          {
+            "start": [
+              -20,
+              -15
+            ],
+            "end": [
+              20,
+              -15
+            ]
+          },
+          {
+            "start": [
+              20,
+              -15
+            ],
+            "end": [
+              20,
+              15
+            ]
+          },
+          {
+            "start": [
+              20,
+              15
+            ],
+            "end": [
+              -20,
+              15
+            ]
+          },
+          {
+            "start": [
+              -20,
+              15
+            ],
+            "end": [
+              -20,
+              -15
+            ]
+          }
+        ],
+        "area": 1200,
+        "anchor": {
+          "kind": "extrudeCap",
+          "featureId": "extrude-pocket",
+          "depth": 0
+        }
+      }
+    },
+    {
+      "position": [
+        0,
+        0,
+        0
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "visible": true,
+      "id": "extrude-pocket",
+      "kind": "extrude",
+      "name": "Extrude 2",
+      "sketchId": "sketch-pocket",
+      "operation": "cut",
+      "parameters": {
+        "distance": -4,
+        "symmetric": false,
+        "edgeRadius": 0
+      }
+    },
+    {
+      "position": [
+        0,
+        0,
+        0
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "visible": true,
+      "id": "fillet-pocket",
+      "kind": "fillet",
+      "name": "Fillet 1",
+      "parameters": {
+        "radius": 2,
+        "cornerStyle": "spherical",
+        "filletShape": "rational"
+      },
+      "edges": [
+        {
+          "start": [
+            10,
+            -6,
+            6
+          ],
+          "end": [
+            10,
+            -6,
+            2
+          ],
+          "point": [
+            10,
+            -6,
+            4
+          ],
+          "anchor": {
+            "kind": "profileLateral",
+            "sketchId": "sketch-pocket",
+            "entityId": "pocket-l0",
+            "featureId": "extrude-pocket",
+            "t": 1
+          }
+        }
+      ]
+    }
+  ],
+  "createdAt": "2026-01-01T00:00:00.000Z",
+  "updatedAt": "2026-10-15T00:00:00.000Z"
+}
