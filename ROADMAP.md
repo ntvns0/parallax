@@ -214,14 +214,15 @@ Then the move is a render-surface swap instead of a rewrite.
   measure overlay, push/pull, and face selection into units that receive the
   `ViewportController` rather than reaching through component state. Same proof
   as 2.1.
-- ⬜ **2.2a Render on demand.** The viewport redraws the whole scene, ambient
-  occlusion included, on every animation frame, even when nothing has changed
-  and while the sketcher covers it. That is a constant GPU load on laptops and
-  phones. Under software WebGL each frame takes over a second, which is why
-  the browser tests take two minutes. Draw only after a camera move, a scene
-  change, or a resize. The split in 2.2 gathers the scene mutations so that
-  each one can request a frame. Prove it with a test that counts frames while
-  the app sits idle.
+- ✅ **2.2a Render on demand.** Done. `viewport/frame-scheduler.ts` draws a
+  frame only when the camera moved (orbit damping included) or something asked
+  for one.
+  - The controller asks after every view change. The viewport asks on input
+    events, prop changes, scene rebuilds, and exact meshes arriving.
+  - `e2e/viewport.spec.ts` counts `data-rendered-frames` to prove an idle
+    viewport draws nothing, and that a drag still orbits.
+  - Together with skipping GTAO while sketching, this took the browser suite
+    from 3.9 minutes to under one.
 - ✅ **2.3 Sketch over the live part.** Done, by a cheaper route than drawing
   every sketch entity in Three.js. The SVG sketcher stays as a translucent
   overlay, and the scene underneath follows its view.

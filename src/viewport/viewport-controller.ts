@@ -7,6 +7,7 @@ import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js'
 import { GTAOPass } from 'three/examples/jsm/postprocessing/GTAOPass.js'
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js'
 import { fitCameraToRadius, planeViewDistance, planeViewFrustum } from './camera-fit'
+import { FrameScheduler } from './frame-scheduler'
 import { fogDensityForRadius } from './fog-fit'
 import { setEdgeResolution } from './model-edges'
 import { ambientOcclusionRadius } from './ao-fit'
@@ -188,11 +189,46 @@ export class ViewportController {
   private lastCameraQuaternion = new THREE.Quaternion()
   private lastCameraPosition = new THREE.Vector3()
 
+  private readonly frames = new FrameScheduler()
+  private renderedFrames = 0
+
+  /**
+   * Ask for the scene to be drawn on the next animation frame. Call it after
+   * changing anything in the scene; the viewport draws nothing otherwise.
+   */
+  requestRender(): void {
+    this.frames.request()
+  }
+
   private startRenderLoop(): void {
     const loop = () => {
       if (this.isDisposed) return
       this.animationFrameId = requestAnimationFrame(loop)
-      this.orbit.update()
+      // Orbit damping keeps the camera moving after the pointer is released,
+      // and view commands move it directly, so both count as a change.
+      const orbitMoved = this.orbit.update()
+      const cameraMoved = orbitMoved
+        || !this.lastCameraQuaternion.equals(this.camera.quaternion)
+        || !this.lastCameraPosition.equals(this.camera.position)
+
+      if (cameraMoved) {
+        this.lastCameraQuaternion.copy(this.camera.quaternion)
+        this.lastCameraPosition.copy(this.camera.position)
+        window.dispatchEvent(new CustomEvent('parallax:camera-change', {
+          detail: {
+            quaternion: [this.camera.quaternion.x, this.camera.quaternion.y, this.camera.quaternion.z, this.camera.quaternion.w],
+            position: [this.camera.position.x, this.camera.position.y, this.camera.position.z],
+            target: [this.orbit.target.x, this.orbit.target.y, this.orbit.target.z],
+          },
+        }))
+        const distance = Math.round(this.camera.position.distanceTo(this.orbit.target))
+        if (distance !== this.lastReportedDistance) {
+          this.lastReportedDistance = distance
+          this.onCameraDistanceCallback?.(distance)
+        }
+      }
+
+      if (!this.frames.shouldDraw(cameraMoved)) return
 
       this.viewLight.position.copy(this.camera.position)
       this.viewLight.target.position.copy(this.orbit.target)
@@ -204,28 +240,15 @@ export class ViewportController {
       else if (this.composer) this.composer.render()
       else this.renderer.render(this.scene, this.camera)
 
-      if (!this.lastCameraQuaternion.equals(this.camera.quaternion) || !this.lastCameraPosition.equals(this.camera.position)) {
-        this.lastCameraQuaternion.copy(this.camera.quaternion)
-        this.lastCameraPosition.copy(this.camera.position)
-        window.dispatchEvent(new CustomEvent('parallax:camera-change', {
-          detail: {
-            quaternion: [this.camera.quaternion.x, this.camera.quaternion.y, this.camera.quaternion.z, this.camera.quaternion.w],
-            position: [this.camera.position.x, this.camera.position.y, this.camera.position.z],
-            target: [this.orbit.target.x, this.orbit.target.y, this.orbit.target.z],
-          },
-        }))
-      }
-
-      const distance = Math.round(this.camera.position.distanceTo(this.orbit.target))
-      if (distance !== this.lastReportedDistance) {
-        this.lastReportedDistance = distance
-        this.onCameraDistanceCallback?.(distance)
-      }
+      // Read by the browser tests to prove an idle viewport draws nothing.
+      this.renderedFrames += 1
+      this.renderer.domElement.dataset.renderedFrames = String(this.renderedFrames)
     }
     loop()
   }
 
   resize(host: HTMLElement): void {
+    this.frames.request()
     const { width, height } = host.getBoundingClientRect()
     if (width === 0 || height === 0) return
     this.renderer.setSize(width, height, false)
@@ -241,6 +264,7 @@ export class ViewportController {
   }
 
   setBrightness(brightness: number): void {
+    this.frames.request()
     this.ambientLight.intensity = 0.3 * brightness
     this.keyLight.intensity = 1.8 * brightness
     this.fillLight.intensity = 0.3 * brightness
@@ -249,6 +273,7 @@ export class ViewportController {
   }
 
   updateLightingForBounds(center: THREE.Vector3, radius: number): void {
+    this.frames.request()
     this.lastModelBounds = { center: center.clone(), radius }
     // The stored fog, not the scene's: the scene has none while sketching, and
     // the density still has to be right when the sketch closes.
@@ -383,6 +408,7 @@ export class ViewportController {
    * would otherwise grey out a part seen from the sketch camera's distance.
    */
   setSketching(active: boolean): void {
+    this.frames.request()
     for (const helper of this.groundHelpers) helper.visible = !active
     this.scene.fog = active ? null : this.fog
     if (!active) this.sketchView = null
@@ -391,6 +417,7 @@ export class ViewportController {
   private aimSketchCamera(): void {
     const view = this.sketchView
     if (!view) return
+    this.frames.request()
     const { target, direction, up } = sketchPlaneFrame(view.plane, view.planeOffset, view.center)
     const size = this.renderer.getSize(new THREE.Vector2())
     Object.assign(this.sketchCamera, planeViewFrustum(size.x, size.y, view.pixelsPerMm))

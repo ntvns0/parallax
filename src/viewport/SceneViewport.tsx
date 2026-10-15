@@ -73,6 +73,7 @@ export function SceneViewport({
   const onFilletEdgeMissRef = useRef(onFilletEdgeMiss)
   const syncFilletEdgesRef = useRef<((edges: FilletEdgeReference[] | undefined) => void) | null>(null)
   const syncMeasurementModeRef = useRef<((active: boolean) => void) | null>(null)
+  const requestRenderRef = useRef<(() => void) | null>(null)
 
   pickSketchFaceRef.current = pickSketchFace
   onSketchFacePickRef.current = onSketchFacePick
@@ -91,6 +92,12 @@ export function SceneViewport({
   useEffect(() => {
     syncMeasurementModeRef.current?.(measureMode)
   }, [measureMode])
+
+  // The viewport draws only on request. A change of mode or selection arrives
+  // as new props, and may change what the scene shows.
+  useEffect(() => {
+    requestRenderRef.current?.()
+  })
 
   useEffect(() => {
     if (!hostRef.current) return
@@ -172,6 +179,7 @@ export function SceneViewport({
     transform.translationSnap = 1
     scene.add(transform.getHelper())
 
+    transform.addEventListener('change', () => controller.requestRender())
     let transformDragging = false
     transform.addEventListener('dragging-changed', (event) => {
       transformDragging = Boolean(event.value)
@@ -480,6 +488,7 @@ export function SceneViewport({
     }
 
     function disposeModels() {
+      controller.requestRender()
       clearFaceHighlight()
       transform.detach()
       disposeObject(modelGroup)
@@ -655,6 +664,7 @@ export function SceneViewport({
     }
 
     function updateSelection() {
+      controller.requestRender()
       const state = useDocumentStore.getState()
       const selectedId = state.selectedId
       const sketching = Boolean(state.activeSketchId)
@@ -777,6 +787,7 @@ export function SceneViewport({
               }
               exactFeatures.add(feature.id)
               publishExactFeatures()
+              controller.requestRender()
               updateSelection()
               fitLightingToModel()
             }).catch(() => {})
@@ -1382,6 +1393,16 @@ export function SceneViewport({
     window.addEventListener('parallax:reverse-view', onReverseView)
     window.addEventListener('parallax:look-at-normal', onLookAtNormal)
 
+    // Hover highlights, snapping markers, measurement and drags all change the
+    // scene from input handlers, so any input asks for a frame. The request is
+    // a flag read on the next animation frame, after those handlers have run.
+    const requestRender = () => controller.requestRender()
+    requestRenderRef.current = requestRender
+    const inputEvents = ['pointerdown', 'pointermove', 'pointerup', 'pointerleave', 'wheel'] as const
+    for (const name of inputEvents) host.addEventListener(name, requestRender, { passive: true })
+    window.addEventListener('keydown', requestRender)
+    window.addEventListener('keyup', requestRender)
+
     renderer.domElement.addEventListener('pointercancel', endPushPull)
     renderer.domElement.addEventListener('pointerdown', onPointerDown)
     renderer.domElement.addEventListener('pointermove', onPointerMove)
@@ -1393,6 +1414,10 @@ export function SceneViewport({
     return () => {
       unsubscribe()
       unsubscribeViewport()
+      requestRenderRef.current = null
+      for (const name of inputEvents) host.removeEventListener(name, requestRender)
+      window.removeEventListener('keydown', requestRender)
+      window.removeEventListener('keyup', requestRender)
       window.removeEventListener('parallax:set-view', onSetView)
       window.removeEventListener('parallax:set-view-direction', onSetViewDirection)
       window.removeEventListener('parallax:roll-view', onRollView)
