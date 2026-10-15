@@ -12,6 +12,11 @@ export type ConstraintResponse =
       id: number
       ok: true
       entities: SketchEntity[]
+      /**
+       * Whether PlaneGCS found a solution. When it did not, `entities` is its
+       * last attempt and satisfies the constraints only partly.
+       */
+      converged: boolean
       redundant: string[]
       conflicting: string[]
       /** Constraints with no PlaneGCS equivalent for the geometry they name. */

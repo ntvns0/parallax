@@ -46,7 +46,14 @@ function getWorker() {
     const handler = pending.get(response.id)
     if (!handler) return
     pending.delete(response.id)
-    if (response.ok) {
+    if (response.ok && !response.converged) {
+      // A failed solve returns PlaneGCS's last attempt, which satisfies the
+      // constraints only partly. Committing it would quietly bend the sketch,
+      // so it is refused and the caller keeps the geometry it asked for.
+      const message = 'These dimensions have no solution. Change or remove the last edit.'
+      useConstraintSolverStore.setState({ ...IDLE, status: 'error', degreesOfFreedom: response.degreesOfFreedom, message })
+      handler.reject(new Error(message))
+    } else if (response.ok) {
       const issueCount = response.conflicting.length + response.redundant.length + response.unsupported.length
       useConstraintSolverStore.setState({
         status: issueCount ? 'error' : 'solved',
