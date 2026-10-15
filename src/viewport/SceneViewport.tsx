@@ -467,6 +467,17 @@ export function SceneViewport({
       host.dataset.faceHighlight = supported ? 'supported' : 'unsupported'
     }
 
+    /**
+     * The features whose exact B-rep is on screen, as `data-exact-features`.
+     * Read by the browser tests to know the kernel result actually arrived,
+     * rather than only that a preview was drawn.
+     */
+    const exactFeatures = new Set<string>()
+    function publishExactFeatures() {
+      if (exactFeatures.size) host.dataset.exactFeatures = [...exactFeatures].join(' ')
+      else delete host.dataset.exactFeatures
+    }
+
     function disposeModels() {
       clearFaceHighlight()
       transform.detach()
@@ -477,6 +488,8 @@ export function SceneViewport({
       sketchLines.clear()
       pendingGhosts.clear()
       delete host.dataset.pendingExact
+      exactFeatures.clear()
+      publishExactFeatures()
       globalMeasurementReferenceCache.clear()
     }
 
@@ -750,6 +763,7 @@ export function SceneViewport({
                 previousMesh.removeFromParent()
                 disposeObject(previousMesh)
                 meshes.delete(supersededId)
+                exactFeatures.delete(supersededId)
               }
               resolvePendingGhost(feature.id)
               mesh.geometry.dispose()
@@ -758,6 +772,8 @@ export function SceneViewport({
               if (oldEdges instanceof LineSegments2) {
                 updateModelEdges(mesh, oldEdges, exactMesh.edgeLines, exactMesh.edgeGroups)
               }
+              exactFeatures.add(feature.id)
+              publishExactFeatures()
               updateSelection()
               fitLightingToModel()
             }).catch(() => {})

@@ -12,6 +12,7 @@ import { tryEvaluateExpression } from '../core/expression'
 import { trimSketchEntity } from './trim'
 import { filletSketchCorner } from './sketch-fillet'
 import { formatLengthInput } from '../core/units'
+import { sketchesAwaitingSolve } from '../core/driven-sketches'
 
 /**
  * Sketch editing that goes through PlaneGCS.
@@ -61,6 +62,53 @@ async function solveAndCommit(
   if (!unchanged) return
 
   useDocumentStore.getState().commitSketchSolve(sketch.id, solved, constraints, options)
+}
+
+/** Whether solving moved any coordinate by more than numerical noise. */
+function geometryMoved(before: SketchEntity[], after: SketchEntity[]) {
+  const numbers = (entities: SketchEntity[]) => JSON.stringify(entities).match(/-?\d+(\.\d+)?(e[-+]?\d+)?/g) ?? []
+  const a = numbers(before)
+  const b = numbers(after)
+  return a.length !== b.length || a.some((value, index) => Math.abs(Number(value) - Number(b[index])) > 1e-9)
+}
+
+/**
+ * Solve a sketch whose driven dimensions were changed from outside the
+ * sketcher — by a parameter edit, or by opening a project — and fold the result
+ * into the edit that changed them, so one undo reverts both.
+ *
+ * Geometry that already satisfies its dimensions is left untouched, so opening
+ * a consistent project does not mark it unsaved. If the sketch changed while
+ * the worker was busy, the newer state is solved instead.
+ */
+export async function solveDrivenSketch(sketchId: string): Promise<void> {
+  const sketch = readSketch(sketchId)
+  if (!sketch) return
+  let solved: SketchEntity[]
+  try {
+    solved = await solveSketchConstraints(sketch.entities, sketch.constraints, resolveSketchAnchor(sketch.entities, sketch.anchor), { id: sketch.id, name: sketch.name })
+  } catch {
+    return
+  }
+  const current = readSketch(sketchId)
+  if (!current) return
+  if (current !== sketch) {
+    if (JSON.stringify(current.constraints) !== JSON.stringify(sketch.constraints)) return solveDrivenSketch(sketchId)
+    if (JSON.stringify(current.entities) !== JSON.stringify(sketch.entities)) return
+  }
+  if (!geometryMoved(current.entities, solved)) return
+  useDocumentStore.getState().commitSketchSolve(sketchId, solved, undefined, { amend: true })
+}
+
+/**
+ * Keep formula-driven sketches solved. Installed once, at startup; returns the
+ * unsubscribe function.
+ */
+export function watchDrivenSketches(): () => void {
+  return useDocumentStore.subscribe((state, previous) => {
+    if (state.document === previous.document) return
+    for (const sketchId of sketchesAwaitingSolve(previous.document, state.document)) void solveDrivenSketch(sketchId)
+  })
 }
 
 /**

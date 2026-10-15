@@ -6,6 +6,8 @@ const systemChrome = '/usr/bin/google-chrome'
 export default defineConfig({
   testDir: './e2e',
   fullyParallel: false,
+  // Software WebGL takes a second or more a frame, and actions wait for frames.
+  expect: { timeout: 15_000 },
   retries: process.env.CI ? 2 : 0,
   reporter: process.env.CI ? 'github' : 'list',
   use: {

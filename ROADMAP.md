@@ -156,16 +156,19 @@ Playwright tests check serving and offline reload. The modelling loop is only
 tested piecewise in jsdom, which has no WebGL, so the viewport, picking, and
 the main-thread ↔ worker plumbing as a whole are unverified.
 
-- ⬜ **1.1 A real-browser modelling test.** Add `e2e/modeling.spec.ts`, run
-  against the production build in Chromium with software WebGL. It creates a
-  project, draws a rectangle on XY, dimensions it, extrudes it, waits for the
-  exact mesh, exports STEP and STL, and checks the downloads. Then it reloads and
-  confirms the part is still there.
-  - Drive it through the UI with stable `data-testid` hooks (the app has one
-    today).
-  - For assertions only, expose a read-only test handle — the current document
-    and kernel status — when the build is in test mode. Never use it to perform
-    actions; that would test the handle, not the app.
+- ✅ **1.1 A real-browser modelling test.** Done: `e2e/modeling.spec.ts` runs
+  against the production build in Chromium with software WebGL. It sketches
+  and dimensions a rectangle, extrudes it, waits for the exact B-rep, exports
+  STEP and STL and checks both files, then reloads and finds the solid again.
+  - It drives the app through accessible roles and labels, not `data-testid`s.
+    For assertions only, it reads `__PARALLAX_TEST__.document()` (with
+    `?test=1`) and the viewport's `data-exact-features` attribute.
+  - A second test caught a real bug on its first run. Editing a parameter that
+    drives a sketch dimension changed the number but not the geometry, so the
+    part never resized. `core/driven-sketches.ts` now names sketches left in
+    that state, and `watchDrivenSketches` solves them as part of the same undo
+    step. It also solves them once when a project opens, which repairs files
+    saved while the bug existed.
 - ⬜ **1.2 Acceptance-part harness.** Create `src/acceptance/` with a builder per
   part (A1–A4), assembled from document commands the same way the UI assembles
   them, plus the three checks described in "Acceptance parts". Every part whose
@@ -200,6 +203,14 @@ Then the move is a render-surface swap instead of a rewrite.
   measure overlay, push/pull, and face selection into units that receive the
   `ViewportController` rather than reaching through component state. Same proof
   as 2.1.
+- ⬜ **2.2a Render on demand.** The viewport redraws the whole scene, ambient
+  occlusion included, on every animation frame, even when nothing has changed
+  and while the sketcher covers it. That is a constant GPU load on laptops and
+  phones. Under software WebGL each frame takes over a second, which is why
+  the browser tests take two minutes. Draw only after a camera move, a scene
+  change, or a resize. The split in 2.2 gathers the scene mutations so that
+  each one can request a frame. Prove it with a test that counts frames while
+  the app sits idle.
 - ⬜ **2.3 Render the sketch in the 3D scene.**
   - Draw the sketch plane and its entities in Three.js on top of the ghosted
     model, and align the camera to the plane on entry.
