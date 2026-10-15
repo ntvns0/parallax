@@ -28,6 +28,7 @@ import { classifyFaceNormal, projectToSketchPlane, sketchPlaneOffset } from './f
 import { isSolid, planSolidRender } from './render-plan'
 import { useViewportStore } from './viewport-store'
 import { ViewportController, type CameraView } from './viewport-controller'
+import { currentPlaneOffset } from '../core/face-anchor'
 import { disposeObject } from './exact-scene-adapter'
 import { ExactEdgeIndex } from './exact-edge-index'
 import { createModelEdges, edgeSourceOf, setEdgeAppearance, updateModelEdges } from './model-edges'
@@ -674,8 +675,10 @@ export function SceneViewport({
         if (edge instanceof LineSegments2) {
           setEdgeAppearance(
             edge,
-            tinted ? '#d8fff0' : sketching ? '#5f7a6f' : '#1b2320',
-            tinted ? 0.95 : sketching ? 0.6 : 0.82,
+            // While sketching, edges are what a user traces and snaps by eye,
+            // so they stay brighter than the translucent faces around them.
+            tinted ? '#d8fff0' : sketching ? '#a9c8bc' : '#1b2320',
+            tinted ? 0.95 : sketching ? 0.9 : 0.82,
             tinted,
           )
         }
@@ -787,17 +790,33 @@ export function SceneViewport({
 
     rebuild()
 
-    const unsubscribeViewport = useViewportStore.subscribe((state) => controller.setBrightness(state.brightness))
+    /** Aim the camera at the open sketch, matching the sketcher's own view of it. */
+    function followSketch() {
+      const state = useDocumentStore.getState()
+      const sketch = state.document.features.find((feature) => feature.id === state.activeSketchId)
+      controller.setSketching(sketch?.kind === 'sketch')
+      if (sketch?.kind !== 'sketch') return
+      const frame = useViewportStore.getState().sketchFrame
+      controller.setSketchPlaneView(
+        sketch.plane,
+        currentPlaneOffset(sketch, state.document.features),
+        frame?.center ?? sketch.attachment?.center,
+        host.getBoundingClientRect().height,
+        frame?.pixelsPerMm,
+      )
+    }
+
+    const unsubscribeViewport = useViewportStore.subscribe((state, previous) => {
+      controller.setBrightness(state.brightness)
+      if (state.sketchFrame !== previous.sketchFrame) followSketch()
+    })
     const unsubscribe = useDocumentStore.subscribe((state, previous) => {
       if (state.document !== previous.document) {
         const nextSignature = documentGeometrySignature()
         if (nextSignature !== geometrySignature) rebuild()
         else updateSelection()
       } else if (state.selectedId !== previous.selectedId || state.activeSketchId !== previous.activeSketchId) updateSelection()
-      if (state.activeSketchId !== previous.activeSketchId && state.activeSketchId) {
-        const sketch = state.document.features.find((feature) => feature.id === state.activeSketchId)
-        if (sketch?.kind === 'sketch') controller.setSketchPlaneView(sketch.plane, sketch.parameters.planeOffset, sketch.attachment?.center, host.getBoundingClientRect().height)
-      }
+      if (state.activeSketchId !== previous.activeSketchId) followSketch()
     })
 
     const raycaster = new THREE.Raycaster()
@@ -1369,11 +1388,7 @@ export function SceneViewport({
     renderer.domElement.addEventListener('pointerup', onPointerUp)
     renderer.domElement.addEventListener('pointerleave', onPointerLeave)
 
-    const initialSketchId = useDocumentStore.getState().activeSketchId
-    const initialSketch = useDocumentStore.getState().document.features.find((feature) => feature.id === initialSketchId)
-    if (initialSketch?.kind === 'sketch') {
-      controller.setSketchPlaneView(initialSketch.plane, initialSketch.parameters.planeOffset, initialSketch.attachment?.center, host.getBoundingClientRect().height)
-    }
+    followSketch()
 
     return () => {
       unsubscribe()

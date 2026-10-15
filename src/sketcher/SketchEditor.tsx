@@ -55,10 +55,12 @@ import {
 } from './line-inference'
 import { tangentSourceAtPoint, type TangentArcSource } from './tangent-arc'
 import { pickTrimTarget, trimRemovalPreview } from './trim'
+import { useViewportStore } from '../viewport/viewport-store'
 import {
   INITIAL_SCALE,
   frameBounds,
   modelToScreen,
+  viewCenter,
   screenToModel,
   zoomAtCenter,
   zoomAtScreenPoint,
@@ -216,6 +218,13 @@ export function SketchEditor({ sketchId }: { sketchId: string }) {
     panX: sketch?.kind === 'sketch' && sketch.attachment ? -sketch.attachment.center[0] * INITIAL_SCALE : 0,
     panY: sketch?.kind === 'sketch' && sketch.attachment ? sketch.attachment.center[1] * INITIAL_SCALE : 0,
   }))
+
+  // The 3D camera follows this view, so the part shows through the sketch
+  // exactly where it sits relative to the sketch plane.
+  useEffect(() => {
+    useViewportStore.getState().setSketchFrame({ center: viewCenter(view), pixelsPerMm: view.scale })
+  }, [view])
+  useEffect(() => () => useViewportStore.getState().setSketchFrame(null), [])
 
   const selectedEntityId = selectedEntityIds.at(-1) ?? null
   const setSelectedEntityId = (entityId: string | null) => setSelectedEntityIds(entityId ? [entityId] : [])
@@ -1064,7 +1073,8 @@ export function SketchEditor({ sketchId }: { sketchId: string }) {
             <path d={`M ${majorSpacing} 0 L 0 0 0 ${majorSpacing}`} fill="none" stroke="#3b4542" strokeWidth="0.75" />
           </pattern>
         </defs>
-        <rect width={size.width} height={size.height} fill="#101413" fillOpacity={activeSketch.attachment ? 0.2 : 0.62} />
+        {/* Light enough that the part underneath stays readable as context. */}
+        <rect width={size.width} height={size.height} fill="#101413" fillOpacity={0.3} />
         <rect width={size.width} height={size.height} fill="url(#minor-grid)" />
         <rect width={size.width} height={size.height} fill="url(#major-grid)" />
         <line x1={0} y1={originY} x2={size.width} y2={originY} className="sketch-axis x-axis" />

@@ -222,24 +222,38 @@ Then the move is a render-surface swap instead of a rewrite.
   change, or a resize. The split in 2.2 gathers the scene mutations so that
   each one can request a frame. Prove it with a test that counts frames while
   the app sits idle.
-- ⬜ **2.3 Render the sketch in the 3D scene.**
-  - Draw the sketch plane and its entities in Three.js on top of the ghosted
-    model, and align the camera to the plane on entry.
-  - Turn pointer input into sketch coordinates by raycasting onto the plane.
-    This replaces the `sketch-view` transform; the reducer from 2.1 does not
-    change.
-  - Keep the SVG surface behind a setting until 2.4.
-- ⬜ **2.4 Parity, then delete the SVG surface.** Before deleting, every
-  existing tool, snap, constraint, and dimension edit must work on the 3D
-  surface, and the e2e test must pass there. A short manual checklist goes in
-  the pull request.
-- ⬜ **2.5 Project edges into a sketch.** Now cheap: clicking a model edge while
-  sketching adds it as reference geometry, anchored with the existing edge
-  provenance. This also feeds A3, where the cutout is placed from the wall's
-  edges.
+- ✅ **2.3 Sketch over the live part.** Done, by a cheaper route than drawing
+  every sketch entity in Three.js. The SVG sketcher stays as a translucent
+  overlay, and the scene underneath follows its view.
+  - The sketcher publishes its view centre and px/mm as
+    `useViewportStore.sketchFrame`. The viewport aims an orthographic camera
+    straight at the sketch plane to match (`planeViewFrustum`).
+  - Orthographic, because perspective is exact only on the sketch plane itself.
+    The first attempt drew a plate's top face 25 mm above the plane 12.5% too
+    large.
+  - Measured in the browser: a 40 × 30 plate covers 160 × 120 px at 4 px/mm and
+    252 px across at 157%, with the corner under the cursor holding still
+    through a wheel zoom.
+  - While sketching, the ground grid, axes, fog, and ambient occlusion are off,
+    and model edges are brightened. Skipping GTAO also cut the browser suite
+    from 3.9 to 2.2 minutes.
+  - What this does not give is orbiting the camera while a sketch is open,
+    because the overlay is 2D. Every tool, snap, and hit test is unchanged,
+    which is why it was cheap.
+- 🔬 **2.4 Orbit while sketching.** This needs the sketch drawn in the scene,
+  which was the original plan for 2.3. Do it only if sketching at an angle turns
+  out to matter in real use. The 2.1 split is the groundwork for it.
+- ⬜ **2.5 Project edges into a sketch.** The sketch camera is now exact, so the
+  part's exact edges can be projected onto the sketch plane and offered as
+  reference geometry. Anchor them with the existing edge provenance. This feeds
+  A3, where the cutout is placed from the wall's edges.
+- ⬜ **2.6 Make the Perspective / Orthographic toggle work.** The view cube
+  stores the preference and nothing reads it, so the toggle does nothing.
+  Reuse the orthographic camera from 2.3 for the modelling view. Orbit
+  controls, picking, and the GTAO pass all have to handle both camera types.
 
-**Exit:** the model stays visible while sketching, the SVG sketcher is gone, and
-both large files are below 600 lines.
+**Exit:** the part stays visible and aligned while sketching (done), and both
+large files are below 600 lines.
 
 ### Phase 3 — The features the acceptance parts need
 

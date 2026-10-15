@@ -37,3 +37,31 @@ export function fitCameraToRadius(modelRadius: number, fovDegrees: number, aspec
     far: distance + radius * 8,
   }
 }
+
+/**
+ * How far a perspective camera has to sit from a plane, looking straight at it,
+ * for the plane to appear at `pixelsPerMm`.
+ *
+ * Perspective is exact for every point on the plane it is aimed at, which is
+ * what lets the 2D sketcher draw over the live scene: anything on the sketch
+ * plane lines up to the pixel, and only geometry off the plane is
+ * foreshortened.
+ */
+export function planeViewDistance(hostHeightPx: number, fovDegrees: number, pixelsPerMm: number): number {
+  const visibleHeightMm = Math.max(hostHeightPx, 1) / pixelsPerMm
+  return visibleHeightMm / (2 * Math.tan((fovDegrees * Math.PI) / 180 / 2))
+}
+
+/**
+ * The orthographic frustum, in millimetres either side of the view centre,
+ * that shows a `width` × `height` pixel viewport at `pixelsPerMm`.
+ *
+ * Orthographic rather than perspective because a sketch is drawn over the
+ * part: what shows through has to be the part projected straight onto the
+ * sketch plane, so a face 25 mm above the plane appears at its true size.
+ */
+export function planeViewFrustum(width: number, height: number, pixelsPerMm: number) {
+  const halfWidth = Math.max(width, 1) / 2 / pixelsPerMm
+  const halfHeight = Math.max(height, 1) / 2 / pixelsPerMm
+  return { left: -halfWidth, right: halfWidth, top: halfHeight, bottom: -halfHeight }
+}

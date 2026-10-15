@@ -75,3 +75,8 @@ export function frameBounds(min: Vec2, max: Vec2, size: ViewportSize, padding: n
   const center: Vec2 = [(min[0] + max[0]) / 2, (min[1] + max[1]) / 2]
   return { scale, panX: -center[0] * scale, panY: center[1] * scale }
 }
+
+/** The model point at the middle of the sketch surface. */
+export function viewCenter(view: SketchView): Vec2 {
+  return [-view.panX / view.scale, view.panY / view.scale]
+}

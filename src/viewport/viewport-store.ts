@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import type { Vec2 } from '../core/model'
 
 /**
  * Viewport display preferences.
@@ -44,7 +45,16 @@ export const useViewportStore = create<{
   /** How far the camera sits from the world origin, in millimetres. */
   cameraDistance: number
   setCameraDistance: (value: number) => void
+  /**
+   * What the open sketch is showing: the sketch point at the middle of the
+   * surface and its scale. The 3D camera follows it so the model lines up
+   * under the sketch. Null when no sketch is open.
+   */
+  sketchFrame: { center: Vec2; pixelsPerMm: number } | null
+  setSketchFrame: (frame: { center: Vec2; pixelsPerMm: number } | null) => void
 }>((set, get) => ({
+  sketchFrame: null,
+  setSketchFrame: (sketchFrame) => set({ sketchFrame }),
   cameraDistance: 0,
   setCameraDistance: (cameraDistance) => set((state) =>
     Math.abs(cameraDistance - state.cameraDistance) > Math.max(state.cameraDistance * 0.002, 0.01)

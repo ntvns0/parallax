@@ -6,7 +6,7 @@ import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js'
 import { GTAOPass } from 'three/examples/jsm/postprocessing/GTAOPass.js'
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js'
-import { fitCameraToRadius } from './camera-fit'
+import { fitCameraToRadius, planeViewDistance, planeViewFrustum } from './camera-fit'
 import { fogDensityForRadius } from './fog-fit'
 import { setEdgeResolution } from './model-edges'
 import { ambientOcclusionRadius } from './ao-fit'
@@ -25,6 +25,17 @@ export type CameraView =
   | 'dimetric'
   | 'trimetric'
   | 'fit'
+
+/** Where a sketch plane is, which side the camera looks from, and which way is up. */
+function sketchPlaneFrame(plane: SketchPlane, planeOffset: number, center: Vec2) {
+  if (plane === 'XY') {
+    return { target: new THREE.Vector3(center[0], center[1], planeOffset), direction: new THREE.Vector3(0, 0, 1), up: new THREE.Vector3(0, 1, 0) }
+  }
+  if (plane === 'XZ') {
+    return { target: new THREE.Vector3(center[0], -planeOffset, center[1]), direction: new THREE.Vector3(0, -1, 0), up: new THREE.Vector3(0, 0, 1) }
+  }
+  return { target: new THREE.Vector3(planeOffset, center[0], center[1]), direction: new THREE.Vector3(1, 0, 0), up: new THREE.Vector3(0, 0, 1) }
+}
 
 export class ViewportController {
   readonly scene: THREE.Scene
@@ -70,7 +81,8 @@ export class ViewportController {
 
     this.scene = new THREE.Scene()
     this.scene.background = new THREE.Color('#181b1b')
-    this.scene.fog = new THREE.FogExp2('#181b1b', 0.0015)
+    this.fog = new THREE.FogExp2('#181b1b', 0.0015)
+    this.scene.fog = this.fog
 
     this.camera = new THREE.PerspectiveCamera(38, 1, 0.1, 10000)
     this.camera.position.set(115, -135, 95)
@@ -107,6 +119,7 @@ export class ViewportController {
     const axes = new THREE.AxesHelper(42)
     axes.position.z = 0.05
     this.scene.add(axes)
+    this.groundHelpers = [grid, axes]
 
     this.ambientLight = new THREE.HemisphereLight('#dff6ef', '#252a29', 0.3)
     this.ambientLight.position.set(0, 0, 1)
@@ -185,7 +198,10 @@ export class ViewportController {
       this.viewLight.target.position.copy(this.orbit.target)
       this.viewLight.target.updateMatrixWorld()
 
-      if (this.composer) this.composer.render()
+      // Sketching skips ambient occlusion: the part is translucent context then,
+      // and GTAO is built for the perspective camera.
+      if (this.sketchView) this.renderer.render(this.scene, this.sketchCamera)
+      else if (this.composer) this.composer.render()
       else this.renderer.render(this.scene, this.camera)
 
       if (!this.lastCameraQuaternion.equals(this.camera.quaternion) || !this.lastCameraPosition.equals(this.camera.position)) {
@@ -221,6 +237,7 @@ export class ViewportController {
     const buffer = this.renderer.getDrawingBufferSize(new THREE.Vector2())
     setEdgeResolution(buffer.x, buffer.y)
     this.composer?.setSize(width, height)
+    this.aimSketchCamera()
   }
 
   setBrightness(brightness: number): void {
@@ -233,9 +250,9 @@ export class ViewportController {
 
   updateLightingForBounds(center: THREE.Vector3, radius: number): void {
     this.lastModelBounds = { center: center.clone(), radius }
-    if (this.scene.fog instanceof THREE.FogExp2) {
-      this.scene.fog.density = fogDensityForRadius(radius)
-    }
+    // The stored fog, not the scene's: the scene has none while sketching, and
+    // the density still has to be right when the sketch closes.
+    this.fog.density = fogDensityForRadius(radius)
     // Occlusion reach is a world-space distance, so it has to follow the part
     // the same way the fog and the light standoff do.
     this.ambientOcclusion?.updateGtaoMaterial({ radius: ambientOcclusionRadius(radius) })
@@ -346,23 +363,61 @@ export class ViewportController {
     this.orbit.update()
   }
 
-  setSketchPlaneView(plane: SketchPlane, planeOffset: number, center: Vec2 = [0, 0], hostHeight = 400): void {
-    const target = plane === 'XY'
-      ? new THREE.Vector3(center[0], center[1], planeOffset)
-      : plane === 'XZ'
-        ? new THREE.Vector3(center[0], -planeOffset, center[1])
-        : new THREE.Vector3(planeOffset, center[0], center[1])
+  private groundHelpers: THREE.Object3D[] = []
 
-    const direction = plane === 'XY'
-      ? new THREE.Vector3(0, 0, 1)
-      : plane === 'XZ'
-        ? new THREE.Vector3(0, -1, 0)
-        : new THREE.Vector3(1, 0, 0)
+  /**
+   * The camera used while a sketch is open, and what it is looking at.
+   *
+   * Orthographic, so the part shows through the sketch projected straight onto
+   * the sketch plane at its true size; see `planeViewFrustum`. The orbit camera
+   * is left aimed at the same plane, so closing the sketch does not jump.
+   */
+  private readonly sketchCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 1, 100000)
+  private sketchView: { plane: SketchPlane; planeOffset: number; center: Vec2; pixelsPerMm: number } | null = null
+  private readonly fog: THREE.FogExp2
 
-    const visibleHeight = Math.max(hostHeight, 1) / 4
-    const distance = visibleHeight / (2 * Math.tan(THREE.MathUtils.degToRad(this.camera.fov) / 2))
+  /**
+   * Switch between modelling and sketching. While sketching, the ground grid
+   * and axes are hidden — the sketcher draws its own grid in the sketch plane,
+   * and two grids at different depths read as noise — and so is the fog, which
+   * would otherwise grey out a part seen from the sketch camera's distance.
+   */
+  setSketching(active: boolean): void {
+    for (const helper of this.groundHelpers) helper.visible = !active
+    this.scene.fog = active ? null : this.fog
+    if (!active) this.sketchView = null
+  }
+
+  private aimSketchCamera(): void {
+    const view = this.sketchView
+    if (!view) return
+    const { target, direction, up } = sketchPlaneFrame(view.plane, view.planeOffset, view.center)
+    const size = this.renderer.getSize(new THREE.Vector2())
+    Object.assign(this.sketchCamera, planeViewFrustum(size.x, size.y, view.pixelsPerMm))
+    this.sketchCamera.up.copy(up)
+    this.sketchCamera.position.copy(target).addScaledVector(direction, 50000)
+    this.sketchCamera.lookAt(target)
+    this.sketchCamera.updateProjectionMatrix()
+    this.sketchCamera.updateMatrixWorld(true)
+  }
+
+  /**
+   * Look straight at a sketch plane so that it appears at `pixelsPerMm`, with
+   * `center` (in sketch coordinates) in the middle of the view — exactly where
+   * the 2D sketcher drawn over the scene puts it.
+   */
+  setSketchPlaneView(plane: SketchPlane, planeOffset: number, center: Vec2 = [0, 0], hostHeight = 400, pixelsPerMm = 4): void {
+    this.sketchView = { plane, planeOffset, center, pixelsPerMm }
+    this.aimSketchCamera()
+    const { target, direction, up } = sketchPlaneFrame(plane, planeOffset, center)
+    const distance = planeViewDistance(hostHeight, this.camera.fov, pixelsPerMm)
+    // Keep the whole part in range however far the sketch is zoomed out, and
+    // close geometry from being clipped when it is zoomed right in.
+    this.camera.near = Math.max(distance / 1000, 0.01)
+    this.camera.far = distance + 20000
+    this.camera.updateProjectionMatrix()
     this.orbit.target.copy(target)
-    syncOrbitControlsUp(this.orbit, this.camera, plane === 'XY' ? new THREE.Vector3(0, 1, 0) : new THREE.Vector3(0, 0, 1))
+    syncOrbitControlsUp(this.orbit, this.camera, up)
     this.camera.position.copy(target).add(direction.multiplyScalar(distance))
     this.camera.lookAt(target)
     this.camera.updateMatrixWorld(true)

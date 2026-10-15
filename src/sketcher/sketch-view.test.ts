@@ -8,8 +8,7 @@ import {
   screenToModel,
   zoomAtCenter,
   zoomAtScreenPoint,
-  type SketchView,
-} from './sketch-view'
+  type SketchView, viewCenter } from './sketch-view'
 
 const size = { width: 800, height: 600 }
 const view: SketchView = { scale: 4, panX: -30, panY: 15 }
@@ -74,5 +73,13 @@ describe('sketch view transform', () => {
     const left = modelToScreen(framed, size, min)[0]
     const right = modelToScreen(framed, size, max)[0]
     expect(right - left).toBeLessThanOrEqual(size.width - padding * 2 + 1e-9)
+  })
+
+  it('names the model point at the middle of the surface', () => {
+    const view = { scale: 2.5, panX: 40, panY: -30 }
+    const size = { width: 600, height: 400 }
+    const center = viewCenter(view)
+    expect(modelToScreen(view, size, center)[0]).toBeCloseTo(300, 9)
+    expect(modelToScreen(view, size, center)[1]).toBeCloseTo(200, 9)
   })
 })

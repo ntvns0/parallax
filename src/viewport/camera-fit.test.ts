@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { fitCameraToRadius } from './camera-fit'
+import { fitCameraToRadius, planeViewDistance, planeViewFrustum } from './camera-fit'
 
 /** Half-height of the view frustum at a given distance. */
 const visibleHalfHeight = (distance: number, fov: number) => Math.tan((fov * Math.PI) / 180 / 2) * distance
@@ -62,5 +62,24 @@ describe('fitCameraToRadius', () => {
       expect(fit.distance).toBeGreaterThan(0)
       expect(fit.near).toBeLessThan(fit.far)
     }
+  })
+})
+
+describe('planeViewDistance', () => {
+  it('shows the plane at the requested scale', () => {
+    const distance = planeViewDistance(800, FOV, 4)
+    // 800 px at 4 px/mm is 200 mm of plane, top to bottom.
+    expect(visibleHalfHeight(distance, FOV) * 2).toBeCloseTo(200, 9)
+  })
+
+  it('moves closer as the sketch zooms in', () => {
+    expect(planeViewDistance(800, FOV, 8)).toBeCloseTo(planeViewDistance(800, FOV, 4) / 2, 9)
+  })
+})
+
+describe('planeViewFrustum', () => {
+  it('spans the viewport at the requested scale, centred on the view', () => {
+    // 600 × 400 px at 4 px/mm is 150 × 100 mm.
+    expect(planeViewFrustum(600, 400, 4)).toEqual({ left: -75, right: 75, top: 50, bottom: -50 })
   })
 })
