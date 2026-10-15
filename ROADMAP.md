@@ -185,9 +185,11 @@ the main-thread ↔ worker plumbing as a whole are unverified.
   - The round-trip check compares operation-chain cache keys, not STL triangle
     counts. Equal keys mean the kernel builds the same solid, and the check
     stays fast and deterministic.
-- ⬜ **1.3 Run both in CI.** Add the modelling spec to the `chromium` Playwright
-  project, and print a line of acceptance-part progress ("A1 ⬜ chamfer, hole,
-  pattern …") in the CI summary.
+- 🚧 **1.3 Run both in CI.** The `chromium` Playwright project picks up
+  `e2e/modeling.spec.ts` on its own, the acceptance suite writes its progress
+  table to the job summary through `GITHUB_STEP_SUMMARY`, and a failed run
+  uploads its Playwright traces. All of it is verified locally. The first
+  hosted run is still pending, because nothing has been pushed yet.
 
 **Exit:** deleting a line from the extrude or export path fails a test that runs
 in CI, and the acceptance progress bar is visible on every pull request.
