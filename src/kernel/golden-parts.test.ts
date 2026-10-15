@@ -222,6 +222,19 @@ describe('golden parts', () => {
     expect(volume).toBeCloseTo(Math.PI * (20 ** 2 - 10 ** 2) * 5 / 4, 4)
   })
 
+  it('revolves about a construction centreline away from the sketch origin', () => {
+    // The 10..20 section turned about the line x = 5 instead of the Y axis:
+    // radii 5..15, 5 mm tall. The centreline is not part of the profile.
+    const centreline = { ...line([5, -10], [5, 20]), construction: true }
+    const sketch = sketchOf([...rectangle([10, 0], [20, 5]), centreline])
+    const revolve = revolveOf(sketch, 360, 'Y')
+    revolve.axisEntityId = centreline.id
+    const part = inspect([sketch, revolve])
+
+    expect(part.volume).toBeCloseTo(Math.PI * (15 ** 2 - 5 ** 2) * 5, 4)
+    expect(part.faces).toBe(4)
+  })
+
   it('adds a boss onto a plate', () => {
     const base = sketchOf(rectangle([-30, -20], [30, 20]), 1)
     const boss = sketchOf(rectangle([-10, -10], [10, 10]), 2)

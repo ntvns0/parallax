@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
+import { sketchRectangle } from './helpers'
 
 /**
  * The sketch tools through the interface: drawing, selecting, typing
@@ -91,4 +92,27 @@ test('draws, selects, retypes, and drags sketch geometry', async ({ page }) => {
   await expect(page.locator('svg.sketch-surface')).toHaveCount(1)
   await page.keyboard.press('Escape')
   await expect(page.locator('svg.sketch-surface')).toHaveCount(0)
+})
+
+test('a construction centreline becomes the axis a revolve turns about', async ({ page }) => {
+  await page.goto('/?test=1')
+  await sketchRectangle(page, [10, 0], [15, 12])
+
+  // A line beside the section, made construction with Q.
+  await page.keyboard.press('l')
+  await drag(page, [5, -5], [5, 20])
+  await page.keyboard.press('v')
+  await click(page, 5, 18)
+  await page.keyboard.press('q')
+  await expect.poll(async () => (await sketchEntities(page))?.entities.filter((entity) => entity.construction).length).toBe(1)
+  await expect(page.locator('g.construction')).toHaveCount(1)
+  await page.getByRole('button', { name: 'Finish sketch' }).click()
+
+  await page.getByRole('button', { name: 'Revolve', exact: true }).click()
+  await page.getByLabel('Revolve axis').selectOption({ label: 'Centreline 1' })
+  const document = await page.evaluate(() => window.__PARALLAX_TEST__!.document())
+  const revolve = document.features.find((feature) => feature.kind === 'revolve')!
+  const centreline = (await sketchEntities(page))!.entities.find((entity) => entity.construction)!
+  expect(revolve.kind === 'revolve' && revolve.axisEntityId).toBe(centreline.id)
+  await expect(page.getByLabel('3D modeling viewport')).toHaveAttribute('data-exact-features', new RegExp(revolve.id), { timeout: 60_000 })
 })

@@ -2,18 +2,21 @@ import type { SketchFeature, Vec3 } from '../core/model'
 
 /**
  * A finished sketch as line-segment positions in world space, for drawing it
- * in the scene. Circles and arcs are cut into segments in proportion to how
- * far round they go, 96 to a full turn and never fewer than 8.
+ * in the scene, with construction geometry apart so it can be drawn dashed.
+ * Circles and arcs are cut into segments in proportion to how far round they
+ * go, 96 to a full turn and never fewer than 8.
  */
-export function sketchWirePositions(sketch: SketchFeature): number[] {
+export function sketchWirePositions(sketch: SketchFeature): { profile: number[]; construction: number[] } {
   const offset = sketch.parameters.planeOffset
   const world = (u: number, v: number): Vec3 => {
     if (sketch.plane === 'XZ') return [u, -offset, v]
     if (sketch.plane === 'YZ') return [offset, u, v]
     return [u, v, offset]
   }
-  const positions: number[] = []
+  const profile: number[] = []
+  const construction: number[] = []
   for (const entity of sketch.entities) {
+    const positions = entity.construction ? construction : profile
     if (entity.type === 'line') {
       positions.push(...world(...entity.start), ...world(...entity.end))
       continue
@@ -29,5 +32,5 @@ export function sketchWirePositions(sketch: SketchFeature): number[] {
     }
     for (let index = 0; index < segments; index += 1) positions.push(...at(index), ...at(index + 1))
   }
-  return positions
+  return { profile, construction }
 }

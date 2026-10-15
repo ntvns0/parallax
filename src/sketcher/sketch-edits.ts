@@ -309,3 +309,15 @@ export async function applySketchPointPosition(
     : entity)
   await solveAndCommit(sketch, entities, sketch.constraints)
 }
+
+/**
+ * Flip the selection between construction and profile geometry: everything to
+ * construction, unless all of it already is. No solve is needed, because
+ * construction changes what a profile is made of, not where anything sits.
+ */
+export function toggleSketchConstruction(sketchId: string, entityIds: string[]) {
+  const sketch = readSketch(sketchId)
+  if (!sketch || !entityIds.length) return
+  const selected = sketch.entities.filter((entity) => entityIds.includes(entity.id))
+  useDocumentStore.getState().setSketchConstruction(sketchId, entityIds, !selected.every((entity) => entity.construction))
+}

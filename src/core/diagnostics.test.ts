@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { clearDiagnostics, collectOpenProfileDiagnostics, findDiagnosticRepair, logDiagnostic, readDiagnostics, recordFeatureDiagnostics, useFeatureDiagnosticsStore, type FeatureDiagnostic } from './diagnostics'
+import { clearDiagnostics, collectOpenProfileDiagnostics, collectRevolveAxisDiagnostics, findDiagnosticRepair, logDiagnostic, readDiagnostics, recordFeatureDiagnostics, useFeatureDiagnosticsStore, type FeatureDiagnostic } from './diagnostics'
 import { createExtrudeFeature, createFeature, createRevolveFeature, type SketchFeature, type Vec2 } from './model'
 
 describe('persistent diagnostics', () => {
@@ -85,5 +85,31 @@ describe('open-profile diagnostics', () => {
   it('stays quiet for a closed profile', () => {
     const sketch = sketchOf(true)
     expect(collectOpenProfileDiagnostics([sketch, createExtrudeFeature(sketch.id, 1, 5)])).toEqual({})
+  })
+})
+
+describe('revolve axis diagnostics', () => {
+  function section(withCentreline: boolean): SketchFeature {
+    const sketch = createFeature('sketch', 1) as SketchFeature
+    const corners: Vec2[] = [[10, 0], [15, 0], [15, 10], [10, 10]]
+    sketch.entities = corners.map((start, index) => ({
+      id: `line-${index}`, type: 'line' as const, start, end: corners[(index + 1) % 4], construction: false,
+    }))
+    if (withCentreline) sketch.entities.push({ id: 'axis', type: 'line', start: [5, 0], end: [5, 10], construction: true })
+    return sketch
+  }
+
+  it('reports a revolve whose centreline was deleted, and offers the sketch axis instead', () => {
+    const sketch = section(false)
+    const revolve = { ...createRevolveFeature(sketch.id, 1), axisEntityId: 'axis' }
+    const found = collectRevolveAxisDiagnostics([sketch, revolve])[revolve.id]
+    expect(found?.code).toBe('missing-revolve-axis')
+    expect(findDiagnosticRepair(found, 'use-sketch-axis')?.featureId).toBe(revolve.id)
+  })
+
+  it('stays quiet while the centreline exists, or when the revolve uses a sketch axis', () => {
+    const sketch = section(true)
+    expect(collectRevolveAxisDiagnostics([sketch, { ...createRevolveFeature(sketch.id, 1), axisEntityId: 'axis' }])).toEqual({})
+    expect(collectRevolveAxisDiagnostics([section(false), createRevolveFeature(sketch.id, 1)])).toEqual({})
   })
 })

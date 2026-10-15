@@ -16,7 +16,7 @@ import { parseLengthInput, sketchSnapIncrement } from '../core/units'
 import { useConstraintSolverStore } from './constraint-solver'
 import { ConstraintPanel } from './ConstraintPanel'
 import { sketchConstraintState } from './constraint-state'
-import { applySketchFillet, applySketchGeometry, applySketchTrim } from './sketch-edits'
+import { applySketchFillet, applySketchGeometry, applySketchTrim, toggleSketchConstruction } from './sketch-edits'
 import { reverseLineRuler, type LineRuler } from './entity-snap'
 import {
   beginAngleBreakaway,
@@ -226,6 +226,7 @@ export function SketchEditor({ sketchId }: { sketchId: string }) {
         if (reversed.snap) setActiveSnap({ ...reversed.snap, source: 'entity' })
         return
       }
+      if (event.key.toLowerCase() === 'q') toggleSketchConstruction(sketchId, selectedEntityIds)
       const shortcut = toolForKey(event.key)
       if (shortcut) useDocumentStore.getState().setSketchTool(shortcut)
     }
@@ -238,7 +239,7 @@ export function SketchEditor({ sketchId }: { sketchId: string }) {
       window.removeEventListener('keydown', onKeyDown)
       window.removeEventListener('keyup', onKeyUp)
     }
-  }, [activeRuler, cancelDrags, pendingArc, pendingTangentArc, pendingThreePointArc, selectedEntityId, sketchId, start, tool])
+  }, [activeRuler, cancelDrags, pendingArc, pendingTangentArc, pendingThreePointArc, selectedEntityId, selectedEntityIds, sketchId, start, tool])
 
   if (!sketch) return null
   const activeSketch = sketch
@@ -513,8 +514,10 @@ export function SketchEditor({ sketchId }: { sketchId: string }) {
     pendingTangentArc,
   })
   const readout = sketchReadout(preview, displayUnits)
+  const constructionIds = new Set(activeSketch.entities.filter((entity) => entity.construction).map((entity) => entity.id))
   const entityClassName = (entityId: string) => [
     constraintState,
+    constructionIds.has(entityId) ? 'construction' : '',
     selectedEntityIds.includes(entityId) ? 'selected' : '',
     troubledEntityIds.has(entityId) ? 'constraint-trouble' : '',
   ].filter(Boolean).join(' ')
@@ -581,6 +584,7 @@ export function SketchEditor({ sketchId }: { sketchId: string }) {
           onDraft: (value) => { setFilletRadiusDraft(value); setFilletError(null) },
           onApply: applyCornerFillet,
         } : null}
+        onConstruction={selectedEntityIds.length ? () => toggleSketchConstruction(sketchId, selectedEntityIds) : null}
         onUndo={() => { useDocumentStore.getState().undo(); setStart(null) }}
         onDelete={selectedEntityId ? () => { useDocumentStore.getState().deleteSketchEntity(sketchId, selectedEntityId); setSelectedEntityId(null) } : null}
       />

@@ -233,6 +233,8 @@ button { color: inherit; }
 .face-reference-center { fill: none; stroke: #f0d182; stroke-width: 1.2; vector-effect: non-scaling-stroke; }
 .face-reference-center-ring { fill: #f0d18222; stroke: #f0d182; stroke-width: 1; vector-effect: non-scaling-stroke; }
 .snap-indicator { pointer-events: none; }
+/* Construction geometry: solved and snappable, never part of a profile. */
+.construction .sketch-entity { stroke-dasharray: 7 4; opacity: 0.7; }
 .snap-indicator circle { fill: #69ddb21c; stroke: #69ddb2; stroke-width: 1.4; vector-effect: non-scaling-stroke; }
 .snap-indicator text { fill: #8de5c3; font: 7px 'DM Mono', monospace; paint-order: stroke; stroke: #121817; stroke-width: 3px; text-transform: uppercase; }
 .snap-indicator.entity.endpoint circle { fill: #f0d18222; stroke: #f0d182; }

@@ -2,6 +2,7 @@ import { currentEdgeReference } from '../core/edge-anchor'
 import { currentPlaneOffset } from '../core/face-anchor'
 import { planeNormalDistance } from '../core/extrude-direction'
 import type { Feature } from '../core/model'
+import { revolveAxis } from '../core/revolve-axis'
 import { getProfileRegions } from '../core/sketch'
 import type { KernelOperation } from './kernel-types'
 
@@ -61,6 +62,10 @@ export function buildOperationChain(feature: Extract<Feature, { kind: 'extrude' 
       if (sketch?.kind !== 'sketch') continue
       const regions = getProfileRegions(sketch)
       if (!regions.length) continue
+      const planeOffset = currentPlaneOffset(sketch, features)
+      // A revolve whose axis line was deleted cannot be built; diagnostics say so.
+      const axis = revolveAxis(candidate, sketch, planeOffset)
+      if (!axis) continue
 
       operations.push({
         type: 'revolve' as const,
@@ -69,9 +74,10 @@ export function buildOperationChain(feature: Extract<Feature, { kind: 'extrude' 
         sketchId: sketch.id,
         regions,
         plane: sketch.plane,
-        planeOffset: currentPlaneOffset(sketch, features),
+        planeOffset,
         angle: candidate.parameters.angle,
-        axis: candidate.parameters.axis,
+        axisOrigin: axis.origin,
+        axisDirection: axis.direction,
         operation: candidate.operation,
       })
     }
@@ -114,7 +120,8 @@ export function describeOperationChain(operations: KernelOperation[]) {
           plane: operation.plane,
           planeOffset: operation.planeOffset,
           angle: operation.angle,
-          axis: operation.axis,
+          axisOrigin: operation.axisOrigin,
+          axisDirection: operation.axisDirection,
           regions: operation.regions.map((region) => ({ outer: region.outer.type, holes: region.holes.length })),
         }
       : { radius: operation.radius, selectedEdges: operation.edges.length }),

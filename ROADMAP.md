@@ -90,9 +90,9 @@ Every part is checked three ways:
 | # | Part | What it exercises | Edit test | Missing today |
 | --- | --- | --- | --- | --- |
 | A1 | **Screw-mount L-bracket.** 40 mm wide, legs of 50 and 30 mm, 4 mm thick, R4 inside corner, 1 mm chamfer on outside edges, two countersunk M4 holes per leg | Face sketches, extrude, fillet, chamfer, Hole, linear pattern | Thickness 4 → 6, hole count 2 → 3 per leg | Chamfer, Hole, linear pattern |
-| A2 | **Desk cable clip.** Screw-down base, a C-shaped Ø10 cable channel with 2 mm walls and a 7 mm snap opening, symmetric about a centreline, 15 mm deep, one countersunk hole in the base | Arcs, trim, sketch fillet, construction centreline, symmetric constraint, offset, mirror | Channel Ø10 → Ø14, wall 2 → 2.5 | Construction geometry, symmetric constraint, sketch offset, mirror |
+| A2 | **Desk cable clip.** Screw-down base, a C-shaped Ø10 cable channel with 2 mm walls and a 7 mm snap opening, symmetric about a centreline, 15 mm deep, one countersunk hole in the base | Arcs, trim, sketch fillet, construction centreline, symmetric constraint, offset, mirror | Channel Ø10 → Ø14, wall 2 → 2.5 | Symmetric constraint, sketch offset, mirror |
 | A3 | **Electronics enclosure with lid.** 80 × 50 × 30 mm box, shelled to 2 mm with an open top, R3 vertical edges, four Ø6 standoffs with Ø4.2 heat-set insert holes in a rectangular pattern, a USB-C cutout in a side wall, and a separate lid body with a lip set by a `clearance = 0.2 mm` parameter and a pattern of vent slots | Shell, multiple bodies, rectangular pattern, side-face sketches, Hole, per-body export | Box 80 × 50 → 100 × 60, clearance 0.2 → 0.3 | Shell, multiple bodies, rectangular pattern, Hole, per-body export |
-| A4 | **Parametric knob.** A revolved body, a 6 mm D-shaft bore with the flat at 4.5 mm plus clearance, 24 grip grooves in a circular pattern, and a chamfered top edge | Revolve, construction axis, circular pattern, chamfer, formula-driven dimensions | Groove count 24 → 18, shaft 6 → 5 | Circular pattern, chamfer, construction axis |
+| A4 | **Parametric knob.** A revolved body, a 6 mm D-shaft bore with the flat at 4.5 mm plus clearance, 24 grip grooves in a circular pattern, and a chamfered top edge | Revolve, construction axis, circular pattern, chamfer, formula-driven dimensions | Groove count 24 → 18, shaft 6 → 5 | Circular pattern, chamfer |
 
 Three of these are the same parts as the template IDs started on the
 `codex/cad-print-templates` branch (`l-bracket`, `cable-guide`,
@@ -325,12 +325,25 @@ is done when the acceptance tests it was blocking stop being skipped. It must
 also come with a document schema change that follows the 0.1 checklist, where
 it needs one.
 
-- ⬜ **3.1 Construction geometry and centrelines** (A2, A4). A flag on any sketch
-  entity: solved, never part of a profile, and drawn dashed. Every entity
-  already carries `construction`, and push/pull and face ownership skip
-  construction entities, but nothing sets the flag and profile detection in
-  `core/sketch.ts` does not check it. Close that gap first, with a test. Centrelines become
-  the mirror line for symmetric constraints and the axis for revolves.
+- ✅ **3.1 Construction geometry and centrelines** (A2, A4). Done.
+  - Correction to the plan: profile detection already skipped construction
+    entities. `sketch.test.ts` now pins that a construction rectangle forms no
+    profile and a construction diagonal splits none. What was missing was any
+    way to set the flag.
+  - **Q** or the toolbar's Construction button toggles the selection.
+    Construction geometry draws dashed in the sketcher and in the 3D wire.
+  - A revolve can turn about a centreline (a construction line in its sketch),
+    chosen in the panel's Axis list. This is `RevolveFeature.axisEntityId`,
+    schema 9.
+  - `core/revolve-axis.ts` resolves the axis for the kernel and for the preview
+    lathe, which now follows any axis. A deleted centreline is reported with a
+    repair that turns the revolve about the sketch axis again.
+  - Proof:
+    - `golden-parts.test.ts` revolves about x = 5 to the hand volume
+      π(15² − 5²)·5.
+    - A4's knob now revolves about its own centreline.
+    - `e2e/sketcher.spec.ts` makes a centreline with Q and revolves about it.
+  - Symmetry about a centreline is 3.2.
 - ⬜ **3.2 Symmetric, midpoint, and point-on-object constraints** (A2, and
   generally needed to fully constrain anything). Midpoint and point-on-line
   already reach PlaneGCS through `constraint-primitives.ts`, created by

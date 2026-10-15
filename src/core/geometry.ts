@@ -1,6 +1,7 @@
 import * as THREE from 'three'
 import { planeNormalDistance } from './extrude-direction'
 import type { ExtrudeFeature, RevolveFeature, Feature, SketchFeature } from './model'
+import { revolveAxisInSketch } from './revolve-axis'
 import { arcAlong, getProfileRegions, profileOutline, type ClosedProfile, type ProfileRegion } from './sketch'
 
 function traceProfile(target: THREE.Shape | THREE.Path, profile: ClosedProfile) {
@@ -99,27 +100,30 @@ export function createRevolveToolGeometry(feature: RevolveFeature, features: Fea
   const regions = getProfileRegions(sketch)
   if (!regions.length) return new THREE.BufferGeometry()
 
+  const axis = revolveAxisInSketch(feature, sketch)
+  if (!axis) return new THREE.BufferGeometry()
   const angle = feature.parameters.angle * (Math.PI / 180)
 
-  // Extract point data from the region
-  const points: THREE.Vector2[] = []
+  // LatheGeometry turns (radius, height) points about its own Y axis, so each
+  // outline point is measured from the revolve axis: how far along it, and
+  // how far out from it. profileOutline tessellates curves, so a profile with
+  // arcs lathes as its true shape rather than as its corner points.
+  const [dx, dy] = axis.direction
+  const across: [number, number] = [-dy, dx]
+  const outline = profileOutline(regions[0].outer, 16)
+  const offsets = outline.map(([x, y]) => [x - axis.origin[0], y - axis.origin[1]] as const)
+  const side = Math.sign(offsets.map(([x, y]) => x * across[0] + y * across[1]).find((value) => Math.abs(value) > 1e-9) ?? 1) || 1
+  const points = offsets.map(([x, y]) => new THREE.Vector2(Math.abs(x * across[0] + y * across[1]), x * dx + y * dy))
 
-  // A simple lathe geometry preview for the outer profile
-  // Note: Three.js LatheGeometry expects points to be provided as a sequence of Vector2.
-  // We'll approximate this by extracting the points of the outer region.
-  // profileOutline tessellates whichever boundary kind this is, so a profile
-  // containing arcs lathes as its true shape rather than as its corner points.
-  for (const p of profileOutline(regions[0].outer, 16)) {
-    points.push(new THREE.Vector2(p[0], p[1]))
-  }
-
-  // LatheGeometry revolves around the Y axis by default
-  const geometry = new THREE.LatheGeometry(points, 64, 0, angle)
-
-  if (feature.parameters.axis === 'X') {
-    // If the chosen axis is X, we must rotate the geometry so the lathe runs around X instead of Y
-    geometry.rotateZ(-Math.PI / 2)
-  }
+  // Starting a quarter turn in puts the first copy of the profile in the
+  // sketch plane, on the side it was drawn, and sweeps right-handed about the
+  // axis direction as the exact revolve does.
+  const geometry = new THREE.LatheGeometry(points, 64, Math.PI / 2, angle)
+  const outward = new THREE.Vector3(across[0] * side, across[1] * side, 0)
+  const along = new THREE.Vector3(dx, dy, 0)
+  geometry.applyMatrix4(new THREE.Matrix4()
+    .makeBasis(outward, along, new THREE.Vector3().crossVectors(outward, along))
+    .setPosition(axis.origin[0], axis.origin[1], 0))
 
   return orientToSketchPlane(geometry, sketch, false, 0)
 }

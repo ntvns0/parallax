@@ -19,7 +19,7 @@ import { resolveSketchAnchor } from './sketch'
  * saved at it stopped opening. `schema-fixtures.test.ts` checks the list has no
  * gaps and that each version has a saved fixture.
  */
-export const MIGRATABLE_SCHEMA_VERSIONS: number[] = [1, 2, 3, 4, 5, 6, 7, 8]
+export const MIGRATABLE_SCHEMA_VERSIONS: number[] = [1, 2, 3, 4, 5, 6, 7, 8, 9]
 
 /**
  * Before v5, a face-attached extrusion stored a positive distance and let the

@@ -102,6 +102,11 @@ type EditorState = {
   replaceSketchEntities: (sketchId: string, entities: SketchEntity[]) => void
   commitSketchSolve: (sketchId: string, entities: SketchEntity[], constraints?: SketchConstraint[], options?: { amend?: boolean }) => void
   deleteSketchEntity: (sketchId: string, entityId: string) => void
+  /**
+   * Mark sketch entities as construction geometry, or back. Construction is
+   * solved and snapped to like anything else, but is never part of a profile.
+   */
+  setSketchConstruction: (sketchId: string, entityIds: string[], construction: boolean) => void
   deleteSketchConstraint: (sketchId: string, constraintId: string) => void
   setSketchConstraintValue: (sketchId: string, constraintId: string, value: number) => void
   /** Drive a dimension by a formula, or clear it with null and keep the number. */
@@ -521,6 +526,14 @@ export const useDocumentStore = create<EditorState>((set, get) => ({
       sketch.entities = sketch.entities.filter((entity) => entity.id !== entityId)
       sketch.constraints = sketch.constraints.filter((constraint) => !constraint.entityIds.includes(entityId))
       sketch.anchor = resolveSketchAnchor(sketch.entities, sketch.anchor)
+    }, sketchId)),
+
+  setSketchConstruction: (sketchId, entityIds, construction) =>
+    set((state) => mutate(state, (document) => {
+      const sketch = document.features.find((feature) => feature.id === sketchId && feature.kind === 'sketch')
+      if (sketch?.kind !== 'sketch') return
+      const ids = new Set(entityIds)
+      for (const entity of sketch.entities) if (ids.has(entity.id)) entity.construction = construction
     }, sketchId)),
 
   deleteSketchConstraint: (sketchId, constraintId) =>

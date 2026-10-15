@@ -11,6 +11,7 @@ import {
   RotateCcw,
   Scissors,
   Spline,
+  SquareDashed,
   Trash2,
   ZoomIn,
   ZoomOut,
@@ -215,12 +216,14 @@ const TOOL_ICONS: Record<EditorTool, ReactNode> = {
   trim: <Scissors />,
 }
 
-export function SketchToolbar({ tool, angleSnap, onAngleSnap, fillet, onUndo, onDelete }: {
+export function SketchToolbar({ tool, angleSnap, onAngleSnap, fillet, onConstruction, onUndo, onDelete }: {
   tool: EditorTool
   angleSnap: AngleSnap
   onAngleSnap: (value: AngleSnap) => void
   /** The corner fillet control, shown when two entities are selected. */
   fillet: { draft: string; onDraft: (value: string) => void; onApply: () => void } | null
+  /** Toggle the selection between construction and profile geometry, when something is selected. */
+  onConstruction: (() => void) | null
   onUndo: () => void
   onDelete: (() => void) | null
 }) {
@@ -253,6 +256,7 @@ export function SketchToolbar({ tool, angleSnap, onAngleSnap, fillet, onUndo, on
         <button onClick={fillet.onApply}>Apply</button>
       </label>
     )}
+    {onConstruction && <button title="Construction geometry is solved and snapped to, but never part of a profile" onClick={onConstruction}><SquareDashed /> Construction <kbd>Q</kbd></button>}
     <button onClick={onUndo}><RotateCcw /> Undo</button>
     {onDelete && <button title="Delete selected entity" onClick={onDelete}><Trash2 /> Delete</button>}
     <button className="finish-sketch" onClick={() => useDocumentStore.getState().finishSketch()}><Check /> Finish sketch</button>

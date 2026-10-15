@@ -103,25 +103,10 @@ function buildTool(operation: KernelExtrudeOperation): Shape3D {
 
 function buildRevolveTool(operation: KernelRevolveOperation): Shape3D {
   let tool: Shape3D | null = null
-
-  let axisDir: [number, number, number] = [1, 0, 0]
-  let origin: [number, number, number] = [0, 0, 0]
-
-  if (operation.plane === 'XY') {
-    axisDir = operation.axis === 'X' ? [1, 0, 0] : [0, 1, 0]
-    origin = [0, 0, operation.planeOffset]
-  } else if (operation.plane === 'XZ') {
-    axisDir = operation.axis === 'X' ? [1, 0, 0] : [0, 0, 1]
-    origin = [0, -operation.planeOffset, 0] // Match orientToSketchPlane offset direction
-  } else if (operation.plane === 'YZ') {
-    axisDir = operation.axis === 'X' ? [0, 1, 0] : [0, 0, 1]
-    origin = [operation.planeOffset, 0, 0]
-  }
-
   for (const region of operation.regions) {
     const solid = step('revolve', () => drawingFromRegion(region)
       .sketchOnPlane(operation.plane, operation.planeOffset)
-      .revolve(axisDir, { origin, angle: operation.angle }) as Shape3D)
+      .revolve(operation.axisDirection, { origin: operation.axisOrigin, angle: operation.angle }) as Shape3D)
 
     if (!tool) {
       tool = solid

@@ -1,5 +1,5 @@
 import type { ProfileRegion } from '../core/sketch'
-import type { FilletEdgeReference, SketchPlane } from '../core/model'
+import type { FilletEdgeReference, SketchPlane, Vec3 } from '../core/model'
 import type { DrawingViewId, OrthographicViewId, ProjectedView } from '../drawing/drawing-types'
 import type { FeatureDiagnostic } from '../core/diagnostics'
 
@@ -39,7 +39,9 @@ export type KernelRevolveOperation = {
   plane: SketchPlane
   planeOffset: number
   angle: number
-  axis: 'X' | 'Y'
+  /** The axis in world space; `axisDirection` has unit length. See `core/revolve-axis.ts`. */
+  axisOrigin: Vec3
+  axisDirection: Vec3
   operation: 'newBody' | 'add' | 'cut'
 }
 

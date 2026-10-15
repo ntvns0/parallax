@@ -16,9 +16,9 @@ import { buildLBracket, lBracketVolume } from './parts/l-bracket'
 type Progress = { id: string; name: string; missing: string[] }
 const progress: Progress[] = [
   { id: 'A1', name: 'Screw-mount L-bracket', missing: ['chamfer', 'Hole feature', 'linear pattern'] },
-  { id: 'A2', name: 'Desk cable clip', missing: ['construction geometry', 'symmetric constraint', 'sketch offset', 'mirror', 'Hole feature'] },
+  { id: 'A2', name: 'Desk cable clip', missing: ['symmetric constraint', 'sketch offset', 'mirror', 'Hole feature'] },
   { id: 'A3', name: 'Electronics enclosure with lid', missing: ['shell', 'multiple bodies', 'rectangular pattern', 'Hole feature', 'per-body export'] },
-  { id: 'A4', name: 'Parametric knob', missing: ['circular pattern', 'chamfer', 'construction axis'] },
+  { id: 'A4', name: 'Parametric knob', missing: ['circular pattern', 'chamfer'] },
 ]
 
 beforeAll(loadKernels, 120_000)

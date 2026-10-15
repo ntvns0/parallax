@@ -285,14 +285,20 @@ export type FilletFeature = FeatureBase & {
 
 export type RevolveFeature = FeatureBase & {
   kind: 'revolve'
+  /** `axis` is the sketch axis turned about when no line is named. */
   parameters: RevolveParameters
   sketchId: string
   operation: 'newBody' | 'add' | 'cut'
+  /**
+   * A line in the source sketch to turn about instead of a sketch axis,
+   * normally a construction centreline. Added in schema 9.
+   */
+  axisEntityId?: string
 }
 
 export type Feature = PrimitiveFeature | SketchFeature | ExtrudeFeature | FilletFeature | RevolveFeature
 
-export const CURRENT_SCHEMA_VERSION = 8
+export const CURRENT_SCHEMA_VERSION = 9
 
 /**
  * A named value the model can be driven by.
@@ -504,6 +510,7 @@ export function validateCadDocument(value: unknown): { valid: boolean; errors: s
       if (source?.kind !== 'sketch') errors.push(`${feature.name || 'Revolve'} references a missing sketch.`)
       if (!Number.isFinite(feature.parameters.angle) || feature.parameters.angle <= 0 || feature.parameters.angle > 360) errors.push(`${feature.name || 'Revolve'} has an invalid angle.`)
       if (!['X', 'Y'].includes(feature.parameters.axis)) errors.push(`${feature.name || 'Revolve'} has an invalid axis.`)
+      if (feature.axisEntityId !== undefined && typeof feature.axisEntityId !== 'string') errors.push(`${feature.name || 'Revolve'} has an invalid axis line.`)
     }
   }
   return { valid: errors.length === 0, errors }

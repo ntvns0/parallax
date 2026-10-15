@@ -1,5 +1,6 @@
 import { resolveFaceOffset } from './face-anchor'
 import type { Feature } from './model'
+import { revolveAxisInSketch } from './revolve-axis'
 import { getProfileRegions } from './sketch'
 import { create } from 'zustand'
 
@@ -10,7 +11,7 @@ export type FeatureDiagnostic = {
   featureId: string
   featureName: string
   severity: 'warning' | 'error'
-  code: 'unresolved-edge' | 'unresolved-face' | 'constraint-conflict' | 'oversized-fillet' | 'invalid-formula' | 'open-profile'
+  code: 'unresolved-edge' | 'unresolved-face' | 'constraint-conflict' | 'oversized-fillet' | 'invalid-formula' | 'open-profile' | 'missing-revolve-axis'
   reason: 'missing' | 'moved' | 'invalid' | 'conflicting' | 'limit-exceeded'
   subject: { kind: 'edge' | 'face' | 'constraint' | 'parameter' | 'feature'; id?: string; label: string }
   message: string
@@ -29,6 +30,8 @@ export type DiagnosticRepair =
   | { kind: 'clear-formula'; label: string; featureId: string; key: string }
   /** Open a sketch for editing, to close a profile that came apart. */
   | { kind: 'edit-sketch'; label: string; sketchId: string }
+  /** Turn a revolve about its sketch axis again, after the line it named was deleted. */
+  | { kind: 'use-sketch-axis'; label: string; featureId: string }
 
 export const useFeatureDiagnosticsStore = create<{ unresolved: Record<string, FeatureDiagnostic> }>(() => ({ unresolved: {} }))
 
@@ -106,9 +109,37 @@ export function collectOpenProfileDiagnostics(features: Feature[]): Record<strin
   return found
 }
 
+/**
+ * Revolves whose axis line has been deleted from their sketch. Like an open
+ * profile, the operation chain skips these, so the part silently loses them.
+ */
+export function collectRevolveAxisDiagnostics(features: Feature[]): Record<string, FeatureDiagnostic> {
+  const found: Record<string, FeatureDiagnostic> = {}
+  for (const feature of features) {
+    if (feature.kind !== 'revolve' || !feature.axisEntityId) continue
+    const sketch = features.find((candidate) => candidate.id === feature.sketchId)
+    if (sketch?.kind !== 'sketch' || revolveAxisInSketch(feature, sketch)) continue
+    found[feature.id] = {
+      featureId: feature.id,
+      featureName: feature.name,
+      severity: 'warning',
+      code: 'missing-revolve-axis',
+      reason: 'missing',
+      subject: { kind: 'feature', id: sketch.id, label: sketch.name },
+      message: `${feature.name} is skipped: the centreline it turns about is no longer in ${sketch.name}. Choose another axis.`,
+      repairs: [{ kind: 'use-sketch-axis', label: `Turn about the sketch's ${feature.parameters.axis} axis`, featureId: feature.id }],
+    }
+  }
+  return found
+}
+
 /** Every feature problem the document alone can reveal, without the kernel. */
 export function collectDocumentDiagnostics(features: Feature[]): Record<string, FeatureDiagnostic> {
-  return { ...collectOpenProfileDiagnostics(features), ...collectFaceReferenceDiagnostics(features) }
+  return {
+    ...collectOpenProfileDiagnostics(features),
+    ...collectRevolveAxisDiagnostics(features),
+    ...collectFaceReferenceDiagnostics(features),
+  }
 }
 
 export type DiagnosticEntry = {

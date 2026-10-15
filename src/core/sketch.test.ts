@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { createFeature, createId, type SketchFeature } from './model'
+import { createFeature, createId, type SketchEntity, type SketchFeature } from './model'
 import {
   connectedSketchEntityIds,
   getClosedProfiles,
@@ -182,5 +182,25 @@ describe('sketch profiles', () => {
     expect(sketchEntitySelectionCenter(positioned, entityIds)).toEqual([0, 0])
     expect(positioned[0].type === 'line' ? positioned[0].start : null).toEqual([-20, -10])
     expect(getClosedProfiles({ ...sketch, entities: positioned })).toHaveLength(1)
+  })
+})
+
+describe('construction geometry in profiles', () => {
+  const corners: [number, number][] = [[0, 0], [20, 0], [20, 10], [0, 10]]
+  const rectangle = (construction: boolean) => corners.map((start, index) => ({
+    id: `${construction ? 'c' : 'r'}-${index}`, type: 'line' as const, start, end: corners[(index + 1) % 4], construction,
+  }))
+  const sketchOf = (entities: SketchEntity[]) => ({ ...createFeature('sketch', 1), entities } as SketchFeature)
+
+  it('never forms a profile of its own', () => {
+    expect(getProfileRegions(sketchOf(rectangle(true)))).toEqual([])
+    expect(getProfileRegions(sketchOf([{ id: 'c', type: 'circle', center: [0, 0], radius: 5, construction: true }]))).toEqual([])
+  })
+
+  it('does not split a profile it crosses', () => {
+    const diagonal: SketchEntity = { id: 'd', type: 'line', start: [0, 0], end: [20, 10], construction: true }
+    const regions = getProfileRegions(sketchOf([...rectangle(false), diagonal]))
+    expect(regions).toHaveLength(1)
+    expect(regions[0].holes).toEqual([])
   })
 })

@@ -5,9 +5,9 @@ import { closedPolyline, drivenLength, feature, parameter, settle } from '../har
 /**
  * A4 — parametric knob.
  *
- * Today: the revolved body and a blind D-shaft bore with a clearance
- * allowance. Waiting on a circular pattern for the grip grooves, chamfer for
- * the top edge, and a construction axis to revolve about.
+ * Today: the body revolved about a construction centreline, and a blind
+ * D-shaft bore with a clearance allowance. Waiting on a circular pattern for
+ * the grip grooves and chamfer for the top edge.
  *
  * Without a centre-to-line dimension, the flat is placed by the length of its
  * chord: 2·√(r² − d²), where d is how far the flat sits from the bore centre.
@@ -23,24 +23,27 @@ export function buildKnob(): CadDocument {
   const radius = 15
   const height = 12
 
-  // The half-section revolved about the sketch's vertical axis, which on XZ is
-  // world Z.
+  // The half-section, revolved about a centreline drawn up its inside edge.
+  // On XZ the centreline is world Z.
   const section = closedPolyline('section', [[0, 0], [radius, 0], [radius, height], [0, height]])
   const [floor, rim, top] = section.ids
+  const centreline = { id: 'knob-axis', type: 'line' as const, start: [0, 0] as [number, number], end: [0, height + 4] as [number, number], construction: true }
   const body = feature<SketchFeature>({
     id: 'knob-section', kind: 'sketch', name: 'Knob section', plane: 'XZ', parameters: { planeOffset: 0 },
-    entities: section.entities,
+    entities: [...section.entities, centreline],
     constraints: [
       ...section.constraints,
       drivenLength(floor, radius, 'knob_radius'),
       drivenLength(rim, height, 'knob_height'),
+      { id: createId(), type: 'vertical', entityIds: [centreline.id] },
+      { id: createId(), type: 'coincident', entityIds: [centreline.id, floor], pointRefs: ['start', 'start'] },
     ],
     anchor: { entityId: floor, point: 'start' },
   })
   void top
   const revolve = feature<RevolveFeature>({
     id: 'knob-body', kind: 'revolve', name: 'Knob body', sketchId: body.id, operation: 'newBody',
-    parameters: { angle: 360, axis: 'Y' },
+    parameters: { angle: 360, axis: 'Y' }, axisEntityId: centreline.id,
   })
 
   // The D: the long way round the bore circle, closed by the flat.

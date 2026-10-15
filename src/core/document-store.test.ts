@@ -167,6 +167,23 @@ describe('local project workspace', () => {
     expect(rehomed.kind === 'sketch' && rehomed.anchor).toEqual({ entityId: second.id, point: 'center' })
   })
 
+  it('marks entities as construction in one undo step, and the profile follows', async () => {
+    const useDocumentStore = await freshStore()
+    useDocumentStore.getState().beginSketch(undefined, 'XY')
+    const sketchId = useDocumentStore.getState().document.features[0].id
+    const ring = { id: crypto.randomUUID(), type: 'circle' as const, center: [0, 0] as [number, number], radius: 4, construction: false }
+    const other = { id: crypto.randomUUID(), type: 'circle' as const, center: [30, 0] as [number, number], radius: 4, construction: false }
+    useDocumentStore.getState().addSketchGeometry(sketchId, [ring, other], [])
+
+    useDocumentStore.getState().setSketchConstruction(sketchId, [ring.id], true)
+    const marked = useDocumentStore.getState().document.features[0]
+    expect(marked.kind === 'sketch' && marked.entities.map((entity) => entity.construction)).toEqual([true, false])
+
+    useDocumentStore.getState().undo()
+    const restored = useDocumentStore.getState().document.features[0]
+    expect(restored.kind === 'sketch' && restored.entities.map((entity) => entity.construction)).toEqual([false, false])
+  })
+
   it('persists face center and boundary references on a new sketch', async () => {
     const useDocumentStore = await freshStore()
     const attachment = {

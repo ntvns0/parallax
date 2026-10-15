@@ -206,10 +206,20 @@ export class SceneModels {
   }
 
   private addSketch(feature: SketchFeature, selected: boolean) {
+    const wire = sketchWirePositions(feature)
     const geometry = new THREE.BufferGeometry()
-    geometry.setAttribute('position', new THREE.Float32BufferAttribute(sketchWirePositions(feature), 3))
+    geometry.setAttribute('position', new THREE.Float32BufferAttribute(wire.profile, 3))
     const lines = new THREE.LineSegments(geometry, new THREE.LineBasicMaterial({ color: selected ? '#9affd8' : '#68a68f' }))
     lines.userData.featureId = feature.id
+    if (wire.construction.length) {
+      const constructionGeometry = new THREE.BufferGeometry()
+      constructionGeometry.setAttribute('position', new THREE.Float32BufferAttribute(wire.construction, 3))
+      const construction = new THREE.LineSegments(constructionGeometry, new THREE.LineDashedMaterial({
+        color: '#68a68f', dashSize: 3, gapSize: 2, transparent: true, opacity: 0.7,
+      }))
+      construction.computeLineDistances()
+      lines.add(construction)
+    }
     this.controller.modelGroup.add(lines)
     this.sketchLines.set(feature.id, lines)
   }

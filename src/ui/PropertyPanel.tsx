@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
 import { Download, MousePointer2, Trash2 } from 'lucide-react'
 import { useDocumentStore } from '../core/document-store'
-import { collectDocumentDiagnostics, collectOpenProfileDiagnostics, findDiagnosticRepair, useFeatureDiagnosticsStore } from '../core/diagnostics'
-import type { Feature, FilletCornerStyle, FilletProfileShape, Vec3 } from '../core/model'
+import { collectDocumentDiagnostics, collectOpenProfileDiagnostics, collectRevolveAxisDiagnostics, findDiagnosticRepair, useFeatureDiagnosticsStore } from '../core/diagnostics'
+import type { Feature, FilletCornerStyle, FilletProfileShape, SketchFeature, Vec3 } from '../core/model'
+import { revolveAxisCandidates } from '../core/revolve-axis'
 import { getProfileRegions, sketchBounds } from '../core/sketch'
 import { formatLength, formatLengthInput, parseLengthInput, unitLabel } from '../core/units'
 import { tryEvaluateExpression } from '../core/expression'
@@ -380,6 +381,43 @@ function FilletProperties({ feature, onReselectEdges }: { feature: Extract<Featu
   )
 }
 
+/**
+ * What a revolve turns about: the sketch's X or Y axis, or one of its
+ * centrelines. Picking a centreline keeps the sketch axis as the fallback.
+ */
+function RevolveAxisField({ feature, sketch }: { feature: Extract<Feature, { kind: 'revolve' }>; sketch: SketchFeature | undefined }) {
+  const centrelines = sketch ? revolveAxisCandidates(sketch) : []
+  const missing = Boolean(feature.axisEntityId && !centrelines.some((line) => line.id === feature.axisEntityId))
+  const value = feature.axisEntityId ? `line:${feature.axisEntityId}` : feature.parameters.axis
+  function choose(choice: string) {
+    const lineId = choice.startsWith('line:') ? choice.slice(5) : undefined
+    const axis = lineId ? feature.parameters.axis : choice as 'X' | 'Y'
+    useDocumentStore.getState().updateFeature(feature.id, { axisEntityId: lineId, parameters: { ...feature.parameters, axis } })
+  }
+  return (
+    <label className="select-field"><span>Axis</span><select aria-label="Revolve axis" value={value} onChange={(event) => choose(event.target.value)}>
+      <option value="X">Sketch X axis</option>
+      <option value="Y">Sketch Y axis</option>
+      {centrelines.map((line, index) => <option key={line.id} value={`line:${line.id}`}>Centreline {index + 1}</option>)}
+      {missing && <option value={value} disabled>Deleted centreline</option>}
+    </select></label>
+  )
+}
+
+/** A revolve skipped because the centreline it turned about was deleted. */
+function RevolveAxisWarning({ feature }: { feature: Feature }) {
+  const features = useDocumentStore((state) => state.document.features)
+  const diagnostic = collectRevolveAxisDiagnostics(features)[feature.id]
+  const repair = diagnostic && findDiagnosticRepair(diagnostic, 'use-sketch-axis')
+  if (!diagnostic) return null
+  return (
+    <div className="dependency-warning">
+      <span>{diagnostic.message}</span>
+      {repair && <button type="button" onClick={() => useDocumentStore.getState().updateFeature(repair.featureId, { axisEntityId: undefined })}>{repair.label}</button>}
+    </div>
+  )
+}
+
 function RevolveProperties({ feature }: { feature: Extract<Feature, { kind: 'revolve' }> }) {
   const updateParameters = useDocumentStore((state) => state.updateParameters)
   const features = useDocumentStore((state) => state.document.features)
@@ -409,10 +447,7 @@ function RevolveProperties({ feature }: { feature: Extract<Feature, { kind: 'rev
       <div className="property-section">
         <h3>Extent</h3>
         <NumberField label="Angle" value={feature.parameters.angle} minAbs={0.001} binding={{ featureId: feature.id, key: 'angle' }} formula={feature.formulas?.angle} onCommit={(value) => updateParameters(feature.id, { angle: Math.min(360, Math.max(0.001, value)) })} />
-        <label className="select-field"><span>Axis</span><select value={feature.parameters.axis} onChange={(event) => updateParameters(feature.id, { axis: event.target.value as 'X' | 'Y' })}>
-          <option value="X">X Axis</option>
-          <option value="Y">Y Axis</option>
-        </select></label>
+        <RevolveAxisField feature={feature} sketch={source?.kind === 'sketch' ? source : undefined} />
       </div>
       <div className="property-section">
         <h3>Boolean operation</h3>
@@ -425,6 +460,7 @@ function RevolveProperties({ feature }: { feature: Extract<Feature, { kind: 'rev
       <div className="property-section feature-info"><span>Profile</span><strong>{source?.name ?? 'Missing sketch'}</strong><span>Operation</span><strong>{feature.operation === 'newBody' ? 'New body' : feature.operation === 'add' ? 'Boolean add' : 'Boolean cut'}</strong><span>Kernel</span><strong>OpenCascade B-rep</strong></div>
       {source?.kind !== 'sketch' && <div className="dependency-warning">The source sketch is missing. Restore it from Project recovery or delete this broken feature.</div>}
       <OpenProfileWarning feature={feature} />
+      <RevolveAxisWarning feature={feature} />
       {exportState.status !== 'idle' && <div className={`inline-operation ${exportState.status}`}>{exportState.message}</div>}
       <div className="property-section export-section"><h3>Export solid</h3><small>STEP preserves editable B-rep geometry. Binary STL is broadly compatible and uses millimeter coordinates.</small></div>
       <button className="panel-action primary" disabled={source?.kind !== 'sketch' || exportState.status === 'loading'} onClick={() => downloadSolid('step')}><Download /> Export STEP</button>
