@@ -46,7 +46,8 @@ export class MeasurementOverlay {
   constructor(
     private readonly host: HTMLElement,
     group: THREE.Group,
-    private readonly camera: THREE.PerspectiveCamera,
+    /** Millimetres per screen pixel at a world point, so the angle arc keeps its size on screen. */
+    private readonly millimetresPerPixelAt: (point: THREE.Vector3) => number,
     private readonly picker: ViewportPicker,
     private readonly edgeHighlight: EdgeHighlight,
     private readonly onChange: (measurement: MeasurementState) => void,
@@ -122,10 +123,7 @@ export class MeasurementOverlay {
     const perpendicular = direction.clone().addScaledVector(edge, -cosine)
     if (angle <= 1e-4 || perpendicular.lengthSq() <= 1e-12) return false
     perpendicular.normalize()
-    const bounds = this.host.getBoundingClientRect()
-    const worldPerPixel = 2 * Math.tan(THREE.MathUtils.degToRad(this.camera.fov) / 2)
-      * this.camera.position.distanceTo(origin) / Math.max(1, bounds.height)
-    const radius = worldPerPixel * ANGLE_ARC_RADIUS_PX
+    const radius = this.millimetresPerPixelAt(origin) * ANGLE_ARC_RADIUS_PX
     const points = [origin.clone()]
     const steps = Math.max(8, Math.ceil(angle / (Math.PI / 36)))
     for (let index = 0; index <= steps; index += 1) {

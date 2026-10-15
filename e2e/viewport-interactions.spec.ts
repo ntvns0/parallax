@@ -83,3 +83,23 @@ test('picks an edge of the part to fillet', async ({ page }) => {
   }
   expect(picked).toBe(true)
 })
+
+test('an orthographic view draws and picks the part, and is remembered', async ({ page }) => {
+  const extrudeId = await plate(page)
+  await page.getByTitle('Home view (Isometric Z-up)').click()
+  await page.getByTitle('Orientation menu').click()
+  await page.getByRole('button', { name: 'Orthographic' }).click()
+  const canvas = viewport(page).locator('canvas').first()
+  await expect(canvas).toHaveAttribute('data-projection', 'orthographic')
+  await page.screenshot({ path: test.info().outputPath('orthographic.png') })
+
+  // Picking goes through the camera that drew the frame, so a pull still lands.
+  const at = await findViewportPoint(page, async () => await viewport(page).getAttribute('data-push-pull') === 'available')
+  await page.mouse.down()
+  await page.mouse.move(at.x, at.y - 60, { steps: 6 })
+  await page.mouse.up()
+  await expect.poll(() => extrudeDistance(page, extrudeId)).not.toBe(8)
+
+  await page.reload()
+  await expect(viewport(page).locator('canvas').first()).toHaveAttribute('data-projection', 'orthographic')
+})

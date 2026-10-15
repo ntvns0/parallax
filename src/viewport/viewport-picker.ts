@@ -3,12 +3,15 @@ import type { Vec3 } from '../core/model'
 
 type ClientPosition = { clientX: number; clientY: number }
 
-/** Between the pointer on screen and rays into the scene, for one canvas and camera. */
+/**
+ * Between the pointer on screen and rays into the scene, for one canvas. The
+ * camera is asked for on every use, because the projection can change.
+ */
 export class ViewportPicker {
   private readonly raycaster = new THREE.Raycaster()
   private readonly pointer = new THREE.Vector2()
 
-  constructor(private readonly element: HTMLElement, private readonly camera: THREE.Camera) {}
+  constructor(private readonly element: HTMLElement, private readonly camera: () => THREE.Camera) {}
 
   /** The ray from the camera through the pointer. Reused between calls; copy it to keep it. */
   ray(event: ClientPosition): THREE.Ray {
@@ -17,7 +20,7 @@ export class ViewportPicker {
       ((event.clientX - bounds.left) / bounds.width) * 2 - 1,
       -((event.clientY - bounds.top) / bounds.height) * 2 + 1,
     )
-    this.raycaster.setFromCamera(this.pointer, this.camera)
+    this.raycaster.setFromCamera(this.pointer, this.camera())
     return this.raycaster.ray
   }
 
@@ -30,7 +33,7 @@ export class ViewportPicker {
   /** Where a world point appears, in client pixels. */
   clientPoint(point: THREE.Vector3): THREE.Vector2 {
     const bounds = this.element.getBoundingClientRect()
-    const projected = point.clone().project(this.camera)
+    const projected = point.clone().project(this.camera())
     return new THREE.Vector2(
       bounds.left + (projected.x + 1) * bounds.width / 2,
       bounds.top + (1 - projected.y) * bounds.height / 2,

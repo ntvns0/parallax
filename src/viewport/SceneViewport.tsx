@@ -82,15 +82,19 @@ export function SceneViewport(props: ViewportProps) {
     const controller = new ViewportController(host, {
       onCameraDistanceChange: (distance) => useViewportStore.getState().setCameraDistance(distance),
     })
-    const { scene, camera, renderer, orbit, measurementGroup } = controller
+    const { scene, renderer, orbit, measurementGroup } = controller
     const canvas = renderer.domElement
-    const picker = new ViewportPicker(canvas, camera)
+    controller.setProjection(useViewportStore.getState().projectionMode)
+    const picker = new ViewportPicker(canvas, () => controller.activeCamera())
     const edgeHighlight = new EdgeHighlight()
-    const overlay = new MeasurementOverlay(host, measurementGroup, camera, picker, edgeHighlight, (measurement) => current().onMeasurementChange?.(measurement))
+    const overlay = new MeasurementOverlay(
+      host, measurementGroup, (point) => controller.millimetresPerPixelAt(point), picker, edgeHighlight,
+      (measurement) => current().onMeasurementChange?.(measurement),
+    )
     const snapper = new MeasurementSnapper(picker)
     const faceHighlight = new FaceHighlight(host)
 
-    const transform = new TransformControls(camera, canvas)
+    const transform = new TransformControls(controller.activeCamera(), canvas)
     transform.setMode('translate')
     transform.setSize(0.82)
     transform.translationSnap = 1
@@ -178,6 +182,10 @@ export function SceneViewport(props: ViewportProps) {
     const unsubscribeViewport = useViewportStore.subscribe((state, previous) => {
       controller.setBrightness(state.brightness)
       if (state.sketchFrame !== previous.sketchFrame) followSketch()
+      if (state.projectionMode !== previous.projectionMode) {
+        controller.setProjection(state.projectionMode)
+        transform.camera = controller.activeCamera()
+      }
     })
     const unsubscribeDocument = useDocumentStore.subscribe((state, previous) => {
       if (state.document !== previous.document) models.documentChanged()

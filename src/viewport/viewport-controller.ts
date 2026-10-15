@@ -6,7 +6,7 @@ import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js'
 import { GTAOPass } from 'three/examples/jsm/postprocessing/GTAOPass.js'
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js'
-import { fitCameraToRadius, planeViewDistance, planeViewFrustum } from './camera-fit'
+import { fitCameraToRadius, millimetresPerPixel, orthographicMatch, planeViewDistance, planeViewFrustum } from './camera-fit'
 import { FrameScheduler } from './frame-scheduler'
 import { fogDensityForRadius } from './fog-fit'
 import { setEdgeResolution } from './model-edges'
@@ -14,6 +14,7 @@ import { ambientOcclusionRadius } from './ao-fit'
 import { clientRuntime } from '../runtime/client-runtime'
 import { recordPerformance } from '../runtime/performance'
 import { publishCameraOrientation } from './camera-commands'
+import type { ProjectionMode } from './viewport-store'
 
 export type CameraView =
   | 'home'
@@ -96,6 +97,7 @@ export class ViewportController {
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping
     this.renderer.toneMappingExposure = 1.15
     host.appendChild(this.renderer.domElement)
+    this.renderer.domElement.dataset.projection = this.projection
     this.renderer.domElement.addEventListener('webglcontextlost', this.handleContextLost)
     this.renderer.domElement.addEventListener('webglcontextrestored', this.handleContextRestored)
 
@@ -161,12 +163,15 @@ export class ViewportController {
    * composed path bypasses the renderer's own tone mapping and colour-space
    * conversion, and dropping it washes the whole viewport out.
    */
-  private setupComposer(): void {
+  private setupComposer(camera: THREE.Camera = this.camera): void {
+    this.composer?.dispose()
     try {
       const composer = new EffectComposer(this.renderer)
-      composer.addPass(new RenderPass(this.scene, this.camera))
+      composer.addPass(new RenderPass(this.scene, camera))
 
-      const ao = new GTAOPass(this.scene, this.camera, 1, 1)
+      // GTAO fixes its perspective or orthographic shader when it is built,
+      // so a change of projection rebuilds the whole path.
+      const ao = new GTAOPass(this.scene, camera, 1, 1)
       ao.blendIntensity = 0.7
       ao.updateGtaoMaterial({
         radius: ambientOcclusionRadius(this.lastModelBounds.radius),
@@ -177,6 +182,8 @@ export class ViewportController {
       })
       composer.addPass(ao)
       composer.addPass(new OutputPass())
+      const size = this.renderer.getSize(new THREE.Vector2())
+      if (size.x > 0 && size.y > 0) composer.setSize(size.x, size.y)
 
       this.composer = composer
       this.ambientOcclusion = ao
@@ -232,8 +239,11 @@ export class ViewportController {
       // Sketching skips ambient occlusion: the part is translucent context then,
       // and GTAO is built for the perspective camera.
       if (this.sketchView) this.renderer.render(this.scene, this.sketchCamera)
-      else if (this.composer) this.composer.render()
-      else this.renderer.render(this.scene, this.camera)
+      else {
+        const camera = this.activeCamera()
+        if (this.composer) this.composer.render()
+        else this.renderer.render(this.scene, camera)
+      }
 
       // Read by the browser tests to prove an idle viewport draws nothing.
       this.renderedFrames += 1
@@ -256,6 +266,48 @@ export class ViewportController {
     setEdgeResolution(buffer.x, buffer.y)
     this.composer?.setSize(width, height)
     this.aimSketchCamera()
+  }
+
+  /**
+   * The orthographic modelling camera. It never moves on its own: each frame
+   * it copies the perspective camera's pose and takes the frustum that matches
+   * it at the orbit target (`orthographicMatch`), so orbit, pan, zoom, view
+   * commands and fitting all keep working unchanged on the perspective camera.
+   */
+  private readonly orthographicCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 10000)
+  private projection: ProjectionMode = 'perspective'
+
+  setProjection(mode: ProjectionMode): void {
+    if (mode === this.projection) return
+    this.projection = mode
+    this.setupComposer(this.activeCamera())
+    this.renderer.domElement.dataset.projection = mode
+    this.frames.request()
+  }
+
+  /** The camera the part is drawn and picked with, up to date with the orbit. */
+  activeCamera(): THREE.PerspectiveCamera | THREE.OrthographicCamera {
+    if (this.projection === 'perspective') return this.camera
+    const ortho = this.orthographicCamera
+    const distance = this.camera.position.distanceTo(this.orbit.target)
+    Object.assign(ortho, orthographicMatch(distance, this.camera.fov, this.camera.aspect))
+    // Standing exactly where the perspective camera stands keeps the near
+    // plane clipping only what perspective would not show either, and keeps
+    // the distance fog the same in both projections.
+    ortho.position.copy(this.camera.position)
+    ortho.quaternion.copy(this.camera.quaternion)
+    ortho.up.copy(this.camera.up)
+    ortho.near = Math.min(this.camera.near, 0.1)
+    ortho.far = this.camera.far
+    ortho.updateProjectionMatrix()
+    ortho.updateMatrixWorld(true)
+    return ortho
+  }
+
+  /** How many millimetres one screen pixel spans at a world point, in the current projection. */
+  millimetresPerPixelAt(point: THREE.Vector3): number {
+    const camera = this.activeCamera()
+    return millimetresPerPixel(camera, camera.position.distanceTo(point), this.renderer.getSize(new THREE.Vector2()).y)
   }
 
   setBrightness(brightness: number): void {

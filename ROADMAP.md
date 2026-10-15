@@ -285,14 +285,23 @@ Then the move is a render-surface swap instead of a rewrite.
   part's exact edges can be projected onto the sketch plane and offered as
   reference geometry. Anchor them with the existing edge provenance. This feeds
   A3, where the cutout is placed from the wall's edges.
-- ⬜ **2.6 Make the Perspective / Orthographic toggle work.** The view cube
-  stores the preference and nothing reads it, so the toggle does nothing.
-  Reuse the orthographic camera from 2.3 for the modelling view. Orbit
-  controls, picking, and the GTAO pass all have to handle both camera types.
+- ✅ **2.6 Make the Perspective / Orthographic toggle work.** Done.
+  - The perspective camera still does all the moving. Orbit, pan, zoom, view
+    commands and fitting are unchanged.
+  - An orthographic camera copies its pose each frame and takes the frustum
+    that matches it at the orbit target (`orthographicMatch` in
+    `camera-fit.ts`, tested). The wheel moves the perspective camera in, which
+    narrows that frustum, so the wheel zooms the orthographic view too.
+  - Picking, push/pull, the move gizmo, and the measure tool's angle arc all
+    ask the controller for the active camera. The ambient-occlusion pass is
+    rebuilt for whichever camera is active.
+  - Proof: `e2e/viewport-interactions.spec.ts` switches projection, pulls a face
+    through the orthographic camera, and reloads to check the choice was kept.
+    The canvas reports `data-projection`.
 
 **Exit:** the part stays visible and aligned while sketching (done), and both
 large files are below 600 lines (done: 592 and 348). What remains in the phase
-is 2.5 and 2.6. 2.4 is optional.
+is 2.5. 2.4 is optional.
 
 ### Phase 3 — The features the acceptance parts need
 
@@ -690,6 +699,11 @@ Facts about OpenCascade through Replicad that cost real effort to establish. Rec
 - **`LineSegments2` is a `Mesh`, not a `LineSegments`.** Its geometry stores endpoints as instanced attributes, so it has no `position` attribute either. Both facts silently break anything that finds edges with `instanceof THREE.LineSegments` or reads `geometry.getAttribute('position')` — which is what measurement snapping used to do. Where the model's edges *are* now lives in `viewport/model-edges.ts` as an `EdgeSource` on the solid, separate from how they are drawn.
 - **`LineMaterial` needs the drawing-buffer size.** Width is computed in clip space, so a material that misses a resize keeps drawing at the previous viewport's width. `setEdgeResolution` in `model-edges.ts` is called from `ViewportController.resize` for that reason, and `disposeObject` has to unregister materials or the registry keeps disposed ones alive.
 - **A composed render path bypasses tone mapping.** `EffectComposer` ignores `renderer.toneMapping` and `outputColorSpace`; without a closing `OutputPass` the entire viewport washes out. This looks like a lighting bug and is not one.
+- **`GTAOPass` fixes its camera type when it is built.** Its constructor sets
+  the `PERSPECTIVE_CAMERA` shader define from the camera it is given, and
+  nothing updates it after that. Giving an existing pass an orthographic camera
+  gives wrong occlusion. `ViewportController.setProjection` rebuilds the whole
+  composer instead.
 - **A face sketch's own cut matches its face too.** Deriving a face anchor by
   "which sweep end sits at this offset" finds the cut made *from* the sketch,
   because that cut starts exactly on the face. The resulting anchor is circular

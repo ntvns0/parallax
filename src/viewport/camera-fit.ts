@@ -65,3 +65,33 @@ export function planeViewFrustum(width: number, height: number, pixelsPerMm: num
   const halfHeight = Math.max(height, 1) / 2 / pixelsPerMm
   return { left: -halfWidth, right: halfWidth, top: halfHeight, bottom: -halfHeight }
 }
+
+/**
+ * The orthographic frustum that matches a perspective camera at the plane
+ * through its orbit target, `distance` away.
+ *
+ * Orbiting, panning and zooming all keep driving the perspective camera; an
+ * orthographic view copies its pose and takes this frustum, so switching
+ * projection leaves the part under the cursor where it was and the wheel
+ * still zooms.
+ */
+export function orthographicMatch(distance: number, fovDegrees: number, aspect: number) {
+  const halfHeight = Math.max(distance, 1e-6) * Math.tan((fovDegrees * Math.PI) / 180 / 2)
+  const halfWidth = halfHeight * (Number.isFinite(aspect) && aspect > 0 ? aspect : 1)
+  return { left: -halfWidth, right: halfWidth, top: halfHeight, bottom: -halfHeight }
+}
+
+/**
+ * How many millimetres one screen pixel spans at `distance` from a camera:
+ * from the perspective field of view, or for an orthographic camera from its
+ * frustum alone.
+ */
+export function millimetresPerPixel(
+  camera: { isOrthographicCamera?: boolean; top?: number; bottom?: number; zoom?: number; fov?: number },
+  distance: number,
+  hostHeightPx: number,
+) {
+  const height = Math.max(1, hostHeightPx)
+  if (camera.isOrthographicCamera) return ((camera.top ?? 1) - (camera.bottom ?? -1)) / (camera.zoom ?? 1) / height
+  return (2 * Math.tan(((camera.fov ?? 50) * Math.PI) / 180 / 2) * distance) / height
+}
