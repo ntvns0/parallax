@@ -169,13 +169,22 @@ the main-thread ↔ worker plumbing as a whole are unverified.
     that state, and `watchDrivenSketches` solves them as part of the same undo
     step. It also solves them once when a project opens, which repairs files
     saved while the bug existed.
-- ⬜ **1.2 Acceptance-part harness.** Create `src/acceptance/` with a builder per
-  part (A1–A4), assembled from document commands the same way the UI assembles
-  them, plus the three checks described in "Acceptance parts". Every part whose
-  capabilities are missing is a skipped test naming them.
-  - Before the harness lands, build the parts of A1 that are possible today —
-    plate, legs, inside fillet — as a non-skipped partial, to prove the harness
-    works.
+- ✅ **1.2 Acceptance-part harness.** Done: `src/acceptance/`. The harness
+  loads OpenCascade and PlaneGCS from disk and edits a part the way the app
+  does: resolve formulas, solve the sketches they drive, evaluate. Parts are
+  built from feature factories rather than store commands; the browser test
+  covers the UI path.
+  - A1 builds its L-body and inside fillet. A4 builds its revolved body and a
+    D-shaft bore with clearance. Both pass the geometry, edit, and round-trip
+    checks. A2, A3, and the rest of A1 and A4 are `todo`s naming what they
+    wait for.
+  - Building A4 found two bugs. Sketch arcs came apart from their neighbours
+    whenever a solve moved an arc end (see the kernel behaviour notes). And a
+    sweep whose sketch stopped closing vanished from the part without a word;
+    it now reports itself with an Edit sketch repair.
+  - The round-trip check compares operation-chain cache keys, not STL triangle
+    counts. Equal keys mean the kernel builds the same solid, and the check
+    stays fast and deterministic.
 - ⬜ **1.3 Run both in CI.** Add the modelling spec to the `chromium` Playwright
   project, and print a line of acceptance-part progress ("A1 ⬜ chamfer, hole,
   pattern …") in the CI summary.
@@ -246,7 +255,9 @@ it needs one.
 - ⬜ **3.2 Symmetric, midpoint, and point-on-object constraints** (A2, and
   generally needed to fully constrain anything). Midpoint and point-on-line
   already reach PlaneGCS through `constraint-primitives.ts`, created by
-  snapping; expose them on a selection. Symmetric and point-on-arc are new.
+  snapping; expose them on a selection. Symmetric and point-on-arc are new, and so is a
+  point-to-line distance. A4 has to place its D-flat by the length of its
+  chord because no dimension can measure from the bore centre to the flat.
 - ⬜ **3.3 Chamfer** (A1, A4). Equal-distance, then distance-and-angle. Reuse the
   fillet's edge anchors, limit search, and repair action wholesale; a chamfer is
   the same feature with a different blend.
@@ -630,6 +641,14 @@ Facts about OpenCascade through Replicad that cost real effort to establish. Rec
   and resolves to the stored offset forever, so the sketch silently stops
   following its host. Only features earlier in the history are candidates;
   `migrateFaceAnchors` enforces that and repairs circular anchors on open.
+- **PlaneGCS does not keep an arc's end points on the arc.** An arc primitive
+  has its own start and end points. Nothing ties them to its centre, radius,
+  and angles unless an `arc_rules` constraint names the arc. FreeCAD adds one
+  for every arc, and `@salusoft89/planegcs` does not. Without it, a
+  coincident constraint moves the end point and the arc stays where it was.
+  `sketcher/planegcs-solve.ts` adds the rule. Also: `wrapper.solve()` returns
+  a status, and a failed solve still applies its last attempt, so check the
+  status before trusting the geometry.
 - **Kernel-level tests run under jsdom** (`kernel/arc-profile.test.ts`, `fillet-apply.test.ts`, `fillet-limit.test.ts`). Load the wasm with `readFileSync` and a path resolved from `process.cwd()`: `import.meta.url` is not a file URL in that environment, and the shared test setup assumes a DOM, so the `node` environment is not available.
 
 ## Major technical risks
