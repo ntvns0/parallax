@@ -112,7 +112,7 @@ it.
 Small, urgent, and every one of these is a correctness or trust problem rather
 than a feature.
 
-- ⬜ **0.1 Every saved schema version must open.** The uncommitted lineage change
+- ✅ **0.1 Every saved schema version must open.** Done: `core/schema-fixtures.test.ts` fails on the original bug (simulated v9 bump), and `golden-parts.test.ts` rebuilds v4–v8 through the kernel. Building the fixtures also exposed a face-anchor migration bug — see the kernel behaviour notes. The uncommitted lineage change
   on `codex/cad-print-templates` raises `CURRENT_SCHEMA_VERSION` to 9, but
   `MIGRATABLE_SCHEMA_VERSIONS` is written as `[1, …, 7, CURRENT_SCHEMA_VERSION]`,
   so version 8 silently drops out of the list and every project saved today
@@ -123,12 +123,12 @@ than a feature.
   - Add `src/core/fixtures/schema-v{N}.parallax.json`, one real saved document
     per historical version, and a test that every fixture opens, validates, and
     rebuilds. A schema bump without a new fixture must fail the test.
-- ⬜ **0.2 Park the template lineage change.** Commit the WIP on
+- ✅ **0.2 Park the template lineage change.** Done: committed on `codex/cad-print-templates`, unmerged. Commit the WIP on
   `codex/cad-print-templates` as-is so nothing is lost, and do not merge it.
   Start Phase 0 and Phase 1 work from `main`. When Phase 4 picks templates up,
   rebase the branch onto the 0.1 fix and keep the template IDs in one exported
   `as const` array that both the type and the validator read.
-- ⬜ **0.3 Repo instructions for agents.** Add `AGENTS.md` at the repository root
+- ✅ **0.3 Repo instructions for agents.** Done: `AGENTS.md`, imported by `CLAUDE.md`. Add `AGENTS.md` at the repository root
   (and a `CLAUDE.md` that imports it) covering only what an agent cannot infer:
   - The definition of done: `npm run lint`, `npm test`, `npm run build`, and,
     once Phase 1 lands, `npm run test:e2e`.
@@ -140,7 +140,7 @@ than a feature.
     this file.
   - Anything that surprised you about OpenCascade or PlaneGCS goes into the
     kernel behaviour notes.
-- ⬜ **0.4 Correct the record.** Offline PWA packaging shipped in September but
+- ✅ **0.4 Correct the record.** Done, including the README project layout. Offline PWA packaging shipped in September but
   is still marked ⬜. The refactor notes say schema v7. The "browser-level
   interaction tests" refactor item is marked ✅, but those tests run in jsdom
   without WebGL. `portfolio.json` binds the dev service to `127.0.0.1`. Fix each
@@ -227,10 +227,15 @@ also come with a document schema change that follows the 0.1 checklist, where
 it needs one.
 
 - ⬜ **3.1 Construction geometry and centrelines** (A2, A4). A flag on any sketch
-  entity: solved, never part of a profile, and drawn dashed. Centrelines become
+  entity: solved, never part of a profile, and drawn dashed. Every entity
+  already carries `construction`, and push/pull and face ownership skip
+  construction entities, but nothing sets the flag and profile detection in
+  `core/sketch.ts` does not check it. Close that gap first, with a test. Centrelines become
   the mirror line for symmetric constraints and the axis for revolves.
-- ⬜ **3.2 Midpoint, symmetric, and point-on-object constraints** (A2, and
-  generally needed to fully constrain anything).
+- ⬜ **3.2 Symmetric, midpoint, and point-on-object constraints** (A2, and
+  generally needed to fully constrain anything). Midpoint and point-on-line
+  already reach PlaneGCS through `constraint-primitives.ts`, created by
+  snapping; expose them on a selection. Symmetric and point-on-arc are new.
 - ⬜ **3.3 Chamfer** (A1, A4). Equal-distance, then distance-and-angle. Reuse the
   fillet's edge anchors, limit search, and repair action wholesale; a chamfer is
   the same feature with a different blend.
@@ -456,10 +461,10 @@ Status: ⬜ Planned
 - ⬜ STEP import
 - ⬜ STL, OBJ, and GLB import/export where appropriate
 - ⬜ Native B-rep archival inside project packages
-- 🚧 Project schema compatibility tests and migration fixtures (v1→v3 migration and the Local Storage import are covered)
+- ✅ Project schema compatibility tests and migration fixtures: a saved document for every schema version in `core/fixtures` must open, migrate to the current build's solid, and rebuild through the kernel to a hand-computed volume
 - 🚧 Unit, integration, kernel, and browser interaction test suites (pure geometry, the kernel operation chain, face classification, sketch transforms, and persistence are covered; `kernel/golden-parts.test.ts` now takes whole documents through the real kernel and checks them against hand-computed volumes, which is the layer that previously had almost none; there is no browser interaction suite yet)
 - 🚧 Large-model performance budgets and benchmarks (a reproducible 250-step modeling fixture and baseline benchmarks ship; enforced timing budgets and exact-kernel benchmarks remain)
-- ⬜ Offline-capable PWA packaging
+- ✅ Offline-capable PWA packaging: the service worker caches the shell and both WebAssembly kernels, and a new build waits for the user to accept a reload
 
 ## Milestone 5 — Assemblies
 
@@ -582,12 +587,12 @@ These are implementation-shaping notes from a code review, not committed feature
 
 - ✅ Build a normalized exact-edge index alongside each exact mesh and use it for hover, fillet picking, and measurement snapping. The viewport currently has several related edge/segment traversal paths; one reusable index will reduce duplicated transforms and give reference matching a single contract.
 - ✅ Isolate third-party compatibility shims (including the OrbitControls private-field access and OpenCascade loader cast) in small adapters with version/contract tests. Application code should not depend directly on private library internals.
-- ✅ Add browser-level interaction tests around mode entry/cancel, view commands, selection, fillet preflight/commit, and stale kernel responses. Pure core coverage is already useful; these seams need a small integration suite before the viewport and shell are split.
+- ✅ Add interaction tests (jsdom, without WebGL — the real-browser modelling test is Phase 1.1) around mode entry/cancel, view commands, selection, fillet preflight/commit, and stale kernel responses. Pure core coverage is already useful; these seams need a small integration suite before the viewport and shell are split.
 - ⬜ Add repeatable performance fixtures and budgets for long feature histories, mesh-cache memory, cold/warm fillet evaluation, and viewport rebuilds. Keep the recent “same fillet chain is evaluated once” and “render only necessary history stages” behavior protected by measurements.
 
 ### Roadmap/documentation cleanup
 
-- ✅ Reconcile milestone wording with the current implementation before the next planning pass. Kept current since: the model schema is v7, and provenance anchors now cover fillet edges and face-attached sketches. Stable topological naming still blocks safe dependency-aware incremental recomputation, but it no longer blocks every cache or performance improvement.
+- ✅ Reconcile milestone wording with the current implementation before the next planning pass. Kept current since: the model schema is v8, and provenance anchors now cover fillet edges and face-attached sketches. Stable topological naming still blocks safe dependency-aware incremental recomputation, but it no longer blocks every cache or performance improvement.
 
 ## Kernel behaviour notes
 
@@ -608,6 +613,12 @@ Facts about OpenCascade through Replicad that cost real effort to establish. Rec
 - **`LineSegments2` is a `Mesh`, not a `LineSegments`.** Its geometry stores endpoints as instanced attributes, so it has no `position` attribute either. Both facts silently break anything that finds edges with `instanceof THREE.LineSegments` or reads `geometry.getAttribute('position')` — which is what measurement snapping used to do. Where the model's edges *are* now lives in `viewport/model-edges.ts` as an `EdgeSource` on the solid, separate from how they are drawn.
 - **`LineMaterial` needs the drawing-buffer size.** Width is computed in clip space, so a material that misses a resize keeps drawing at the previous viewport's width. `setEdgeResolution` in `model-edges.ts` is called from `ViewportController.resize` for that reason, and `disposeObject` has to unregister materials or the registry keeps disposed ones alive.
 - **A composed render path bypasses tone mapping.** `EffectComposer` ignores `renderer.toneMapping` and `outputColorSpace`; without a closing `OutputPass` the entire viewport washes out. This looks like a lighting bug and is not one.
+- **A face sketch's own cut matches its face too.** Deriving a face anchor by
+  "which sweep end sits at this offset" finds the cut made *from* the sketch,
+  because that cut starts exactly on the face. The resulting anchor is circular
+  and resolves to the stored offset forever, so the sketch silently stops
+  following its host. Only features earlier in the history are candidates;
+  `migrateFaceAnchors` enforces that and repairs circular anchors on open.
 - **Kernel-level tests run under jsdom** (`kernel/arc-profile.test.ts`, `fillet-apply.test.ts`, `fillet-limit.test.ts`). Load the wasm with `readFileSync` and a path resolved from `process.cwd()`: `import.meta.url` is not a file URL in that environment, and the shared test setup assumes a DOM, so the `node` environment is not available.
 
 ## Major technical risks

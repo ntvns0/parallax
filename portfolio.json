@@ -16,7 +16,7 @@
     "Keeps projects local with versioned IndexedDB autosave and recovery snapshots."
   ],
   "build_command": "npm run build",
-  "run_commands": ["npm run dev -- --host 127.0.0.1 --port 5231 --strictPort", "npm run build", "npm test"],
+  "run_commands": ["npm run dev -- --host 0.0.0.0 --port 5231 --strictPort", "npm run build", "npm test"],
   "preview_dir": "dist",
   "preview_entry": "index.html",
   "notes": "Static production output is embedded by the portfolio; the Vite service is available for live development.",
@@ -24,7 +24,7 @@
     {
       "slug": "web",
       "label": "Parallax Vite app",
-      "command": "npm run dev -- --host 127.0.0.1 --port 5231 --strictPort",
+      "command": "npm run dev -- --host 0.0.0.0 --port 5231 --strictPort",
       "open_url": "http://127.0.0.1:5231",
       "health_url": "http://127.0.0.1:5231",
       "description": "Runs the live browser CAD environment locally."

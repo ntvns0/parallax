@@ -67,7 +67,8 @@ npm install
 npm run dev
 ```
 
-Vite serves the application at `http://localhost:5173`.
+Vite serves the application at `http://localhost:5173`, and listens on every
+interface so the same port is reachable from other devices on the network.
 
 ## Useful commands
 
@@ -129,15 +130,22 @@ PlaneGCS and OpenCascade run in separate Web Workers so expensive computation do
 
 ```text
 src/
-├── core/       Parametric document, feature store, schema migration, IndexedDB
-│               storage, sketch profiles and regions, preview geometry
-├── kernel/     OpenCascade worker, exact evaluation client, extrusion extents,
-│               and the operation chain that replays feature history
-├── sketcher/   Sketch interface, PlaneGCS worker, solver-driven edits, and the
-│               pan/zoom transform
-├── ui/         Application shell, feature tree, properties, and icons
-└── viewport/   Three.js scene, cameras, controls, picking, face classification,
-                and exact mesh display
+├── adapters/    Small shims around third-party internals, with contract tests
+├── core/        Parametric document, feature store, schema migration and its
+│                saved-version fixtures, IndexedDB storage, sketch profiles and
+│                regions, parameters and formulas, reference anchors
+├── drawing/     Drawing sheets: view layout, auto-dimensioning, hatching, and
+│                the PDF and SVG renderers
+├── kernel/      OpenCascade worker, exact evaluation client, extrusion extents,
+│                the operation chain that replays feature history, and the
+│                golden-part regression corpus
+├── performance/ Deterministic modelling fixtures and benchmarks
+├── runtime/     Client capability policy, performance reports, storage health
+├── sketcher/    Sketch interface, PlaneGCS worker, solver-driven edits, and the
+│                pan/zoom transform
+├── ui/          Application shell, feature tree, properties, and icons
+└── viewport/    Three.js scene, cameras, controls, picking, face classification,
+                 and exact mesh display
 ```
 
 Geometry and coordinate logic is kept in pure modules separate from the React
