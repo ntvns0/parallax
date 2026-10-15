@@ -51,9 +51,10 @@ export function snapLineEnd(
   if (length < 1e-9) return end
   const angle = inferredLineAngle(start, end, incrementDegrees, false, smartToleranceDegrees)
   if (angle === null) return end
-  const snappedLength = incrementDegrees === 0
-    ? length
-    : Math.max(lengthIncrement, Math.round(length / lengthIncrement) * lengthIncrement)
+  // The length snaps in every mode. The end arrived grid-snapped, and turning
+  // it onto the inferred direction keeps its length, so a level line dragged to
+  // (30, 1) would otherwise be √901 long rather than 30.
+  const snappedLength = Math.max(lengthIncrement, Math.round(length / lengthIncrement) * lengthIncrement)
   return [start[0] + Math.cos(angle) * snappedLength, start[1] + Math.sin(angle) * snappedLength]
 }
 

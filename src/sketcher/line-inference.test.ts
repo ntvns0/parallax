@@ -14,6 +14,15 @@ describe('smart line angle inference', () => {
     expect(Math.hypot(...snapped)).toBeCloseTo(10, 8)
   })
 
+  it('keeps a grid-snapped end on the grid when Smart mode levels the line', () => {
+    // The pointer is grid-snapped before inference, so a line dragged to
+    // (30, 0.6) arrives as (30, 1). Levelling it must give 30, not √901.
+    expect(snapLineEnd([0, 0], [30, 1], 0, 1)).toEqual([30, 0])
+    const vertical = snapLineEnd([0, 0], [-1, 25], 0, 1)
+    expect(vertical[0]).toBeCloseTo(0, 12)
+    expect(vertical[1]).toBe(25)
+  })
+
   it('leaves an arbitrary angle free outside the magnetic window', () => {
     const end = pointAt(37)
     expect(snapLineEnd([0, 0], end, 0)).toEqual(end)

@@ -4,7 +4,7 @@ import { resolveSketchAnchor } from '../core/sketch'
 import type { ConstraintRequest, ConstraintResponse } from './constraint-types'
 import { recordFeatureDiagnostics, type FeatureDiagnostic } from '../core/diagnostics'
 
-type SolverState = {
+export type SolverState = {
   status: 'idle' | 'loading' | 'solved' | 'error'
   degreesOfFreedom: number | null
   message: string

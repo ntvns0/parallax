@@ -141,8 +141,8 @@ src/
 │                golden-part regression corpus
 ├── performance/ Deterministic modelling fixtures and benchmarks
 ├── runtime/     Client capability policy, performance reports, storage health
-├── sketcher/    Sketch interface, PlaneGCS worker, solver-driven edits, and the
-│                pan/zoom transform
+├── sketcher/    Sketch interface, PlaneGCS worker, solver-driven edits, the
+│                pan/zoom transform, and what each tool adds and snaps to
 ├── ui/          Application shell, feature tree, properties, and icons
 └── viewport/    Three.js scene, cameras, controls, picking, face classification,
                  and exact mesh display

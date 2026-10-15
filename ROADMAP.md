@@ -205,12 +205,31 @@ which is why sketch-tool work is frozen until this phase ends.
 The two largest files are exactly the two that change, so they get split first.
 Then the move is a render-surface swap instead of a rewrite.
 
-- ⬜ **2.1 Pull the sketch tools out of `SketchEditor.tsx` (1,445 lines).** Tool
-  state, pointer handling, and edits become a pure reducer: it takes pointer
-  events in sketch coordinates and returns edits plus preview geometry. Test the
-  reducer directly. The SVG surface becomes a thin renderer of the reducer's
-  output. Behaviour must not change; the Phase 1 e2e test is the proof.
-- ⬜ **2.2 Split `SceneViewport.tsx` (1,394 lines).** Separate picking, the
+- ✅ **2.1 Pull the sketch tools out of `SketchEditor.tsx`.** Done. It went
+  from 1,456 lines to 592. Each step moved into a tested module:
+  - `sketch-geometry-builders.ts`: what each tool adds, with the constraints
+    its gesture implies.
+  - `sketch-point-resolution.ts`: snap precedence.
+  - `sketch-drawing-preview.ts`: what the next click would add.
+  - `sketch-readout.ts`: the text beside the cursor.
+  - `sketch-screen.ts`: model to pixels.
+  - `sketch-tools.ts`: the tool bar and its shortcuts.
+
+  The drawing is in `SketchSurfaceLayers.tsx` and the HTML panels are in
+  `SketchPanels.tsx`. Pan and zoom are in `use-sketch-view.ts`, and drags are
+  in `use-sketch-drags.ts`.
+  - **Not built: the full reducer this item planned.** The click sequence
+    (which click of an arc this is) still lives in the component's state.
+  - Everything that gives a gesture its meaning is now independent of the
+    surface, and that is what 2.4 would reuse. Write the reducer as part of 2.4
+    if 2.4 ever happens.
+  - Proof: `e2e/sketcher.spec.ts` draws a line, selects it, types an end point
+    and a centre, drags it, draws a three-click arc, and steps out with Escape.
+    It found a bug: Smart mode turned a grid-snapped end onto the inferred
+    direction but kept its length, so a level line dragged to 30 mm came out
+    √901 ≈ 30.017 mm long. Line length now snaps in every mode
+    (`line-inference.test.ts`).
+- ⬜ **2.2 Split `SceneViewport.tsx` (1,450 lines).** Separate picking, the
   measure overlay, push/pull, and face selection into units that receive the
   `ViewportController` rather than reaching through component state. Same proof
   as 2.1.
@@ -243,7 +262,8 @@ Then the move is a render-surface swap instead of a rewrite.
     which is why it was cheap.
 - 🔬 **2.4 Orbit while sketching.** This needs the sketch drawn in the scene,
   which was the original plan for 2.3. Do it only if sketching at an angle turns
-  out to matter in real use. The 2.1 split is the groundwork for it.
+  out to matter in real use. The 2.1 split is the groundwork for it. Moving the
+  click sequence into a reducer is the first step.
 - ⬜ **2.5 Project edges into a sketch.** The sketch camera is now exact, so the
   part's exact edges can be projected onto the sketch plane and offered as
   reference geometry. Anchor them with the existing edge provenance. This feeds
