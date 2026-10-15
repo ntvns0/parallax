@@ -281,10 +281,24 @@ Then the move is a render-surface swap instead of a rewrite.
   which was the original plan for 2.3. Do it only if sketching at an angle turns
   out to matter in real use. The 2.1 split is the groundwork for it. Moving the
   click sequence into a reducer is the first step.
-- ⬜ **2.5 Project edges into a sketch.** The sketch camera is now exact, so the
-  part's exact edges can be projected onto the sketch plane and offered as
-  reference geometry. Anchor them with the existing edge provenance. This feeds
-  A3, where the cutout is placed from the wall's edges.
+- ✅ **2.5 Project edges into a sketch, for snapping.** Done.
+  - While a sketch is open, the viewport flattens every solid's exact edges
+    onto the sketch plane (`projected-references.ts`, tested) and publishes
+    them as `useViewportStore.projectedReferences`.
+  - The sketcher snaps to their corners, edge midpoints, hole centres, and
+    edges. These rank after sketch geometry and the attached face, and before
+    the grid.
+  - Face snapping and projected snapping now share
+    `snapToReferenceGeometry` in `core/face-reference.ts`.
+  - Proof: `e2e/viewport-interactions.spec.ts` opens a second sketch on XY and
+    starts a line on the plate's corner.
+  - **Not built: linked projection.** That means copying an edge into the
+    sketch as geometry that follows the part when it changes. It needs a schema
+    change and edge provenance inside sketches. No acceptance part needs it,
+    because A3's cutout can be placed from the side face's own references. It
+    is 2.7, and waits for a real need.
+- ⬜ **2.7 Linked projected geometry.** An entity that keeps an edge anchor and
+  re-resolves when the part rebuilds. Do it when a part needs it.
 - ✅ **2.6 Make the Perspective / Orthographic toggle work.** Done.
   - The perspective camera still does all the moving. Orbit, pan, zoom, view
     commands and fitting are unchanged.
@@ -300,8 +314,9 @@ Then the move is a render-surface swap instead of a rewrite.
     The canvas reports `data-projection`.
 
 **Exit:** the part stays visible and aligned while sketching (done), and both
-large files are below 600 lines (done: 592 and 348). What remains in the phase
-is 2.5. 2.4 is optional.
+large files are below 600 lines (done: 592 and 348). **Phase 2 is done.** 2.4
+and 2.7 stay open until real use asks for them. The sketch-tool freeze in
+`AGENTS.md` is lifted.
 
 ### Phase 3 — The features the acceptance parts need
 

@@ -1,4 +1,4 @@
-import { snapToFaceReference } from '../core/face-reference'
+import { snapToFaceReference, snapToReferenceGeometry, type ReferenceGeometry } from '../core/face-reference'
 import type { DisplayUnits, LineEntity, SketchFaceAttachment, Vec2 } from '../core/model'
 import { lineRulerAtPoint, snapToSketchLines, type LineRuler } from './entity-snap'
 import type { ActiveSnap } from './sketch-geometry-builders'
@@ -8,7 +8,8 @@ import type { ActiveSnap } from './sketch-geometry-builders'
  *
  * In order of precedence: an endpoint, midpoint, or crossing of existing
  * geometry; a division on the ruler of the line under the pointer; a point on
- * that line; a reference on the attached face; and last, the background grid.
+ * that line; a reference on the attached face; one on the part's edges
+ * projected onto the sketch plane; and last, the background grid.
  * Explicit geometry carries design intent, so it beats the grid.
  *
  * Tolerances are in screen pixels and divided by the view scale, so snapping
@@ -43,8 +44,9 @@ export function resolveSketchPoint(options: {
   gridIncrement: number
   rulerDatum: 'start' | 'end'
   attachment: SketchFaceAttachment | undefined
+  projected?: ReferenceGeometry | null
 }): ResolvedPoint {
-  const { point, lines, scale, displayUnits, gridIncrement, rulerDatum, attachment } = options
+  const { point, lines, scale, displayUnits, gridIncrement, rulerDatum, attachment, projected } = options
   const baseMajorIncrement = displayUnits === 'mm' ? 10 : 25.4
   const rulerMultiplier = adaptiveRulerMultiplier(baseMajorIncrement * scale)
   const majorIncrement = baseMajorIncrement * rulerMultiplier
@@ -57,9 +59,8 @@ export function resolveSketchPoint(options: {
   if (lineSnap) return { point: lineSnap.point, snap: { ...lineSnap, source: 'entity' }, ruler }
 
   const faceSnap = snapToFaceReference(point, attachment, 10 / scale)
-  return {
-    point: faceSnap?.point ?? [snapToIncrement(point[0], gridIncrement), snapToIncrement(point[1], gridIncrement)],
-    snap: faceSnap ? { ...faceSnap, source: 'face' } : null,
-    ruler,
-  }
+  if (faceSnap) return { point: faceSnap.point, snap: { ...faceSnap, source: 'face' }, ruler }
+  const projectedSnap = snapToReferenceGeometry(point, projected, 10 / scale)
+  if (projectedSnap) return { point: projectedSnap.point, snap: { ...projectedSnap, source: 'projected' }, ruler }
+  return { point: [snapToIncrement(point[0], gridIncrement), snapToIncrement(point[1], gridIncrement)], snap: null, ruler }
 }

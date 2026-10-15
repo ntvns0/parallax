@@ -25,6 +25,22 @@ describe('resolveSketchPoint', () => {
     expect(resolved.point).toEqual([50, 50])
     expect(resolved.snap).toMatchObject({ source: 'face' })
   })
+
+  it('snaps to the part’s projected edges, off the grid, when nothing nearer claims the point', () => {
+    const projected = {
+      points: [{ point: [12.35, 8.2] as [number, number], kind: 'corner' as const }],
+      edges: [{ start: [0, 30.5] as [number, number], end: [40, 30.5] as [number, number] }],
+    }
+    expect(resolveSketchPoint({ ...base, point: [12.6, 8.4], lines: [], projected })).toMatchObject({
+      point: [12.35, 8.2], snap: { source: 'projected', kind: 'corner' },
+    })
+    expect(resolveSketchPoint({ ...base, point: [17.2, 30.9], lines: [], projected })).toMatchObject({
+      point: [17.2, 30.5], snap: { source: 'projected', kind: 'edge' },
+    })
+    // Sketch geometry still comes first.
+    expect(resolveSketchPoint({ ...base, point: [12.6, 8.4], lines: [{ ...line, end: [12.5, 8.5] }], projected }).snap)
+      .toMatchObject({ source: 'entity' })
+  })
 })
 
 describe('adaptiveRulerMultiplier', () => {

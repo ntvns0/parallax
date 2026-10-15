@@ -28,8 +28,10 @@ made untrue elsewhere in the file. The rules at the end of `ROADMAP.md` say how.
 - Saved documents outlive builds. Any change to the shape of `CadDocument`
   follows `src/core/fixtures/README.md`: bump the schema, extend the migratable
   list, and add a fixture.
-- New sketch tools wait until the sketcher moves into the 3D viewport (Phase 2
-  of the plan). Until then, sketch work means the move itself.
+- A new sketch tool puts what it adds in `sketcher/sketch-geometry-builders.ts`
+  and what it previews in `sketcher/sketch-drawing-preview.ts`, both tested.
+  Snapping goes in `sketcher/sketch-point-resolution.ts`. `SketchEditor.tsx`
+  only sequences clicks, and the SVG layers only draw.
 
 ## Surprises
 

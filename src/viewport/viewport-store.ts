@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import type { ReferenceGeometry } from '../core/face-reference'
 import type { Vec2 } from '../core/model'
 
 /**
@@ -52,9 +53,18 @@ export const useViewportStore = create<{
    */
   sketchFrame: { center: Vec2; pixelsPerMm: number } | null
   setSketchFrame: (frame: { center: Vec2; pixelsPerMm: number } | null) => void
+  /**
+   * The part's edges flattened onto the open sketch's plane, for the sketch to
+   * snap to. Published by the viewport, which holds the exact edges; null when
+   * no sketch is open.
+   */
+  projectedReferences: ReferenceGeometry | null
+  setProjectedReferences: (references: ReferenceGeometry | null) => void
 }>((set, get) => ({
   sketchFrame: null,
   setSketchFrame: (sketchFrame) => set({ sketchFrame }),
+  projectedReferences: null,
+  setProjectedReferences: (projectedReferences) => set({ projectedReferences }),
   cameraDistance: 0,
   setCameraDistance: (cameraDistance) => set((state) =>
     Math.abs(cameraDistance - state.cameraDistance) > Math.max(state.cameraDistance * 0.002, 0.01)

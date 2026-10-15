@@ -15,8 +15,11 @@ import type { TangentArcSource } from './tangent-arc'
 
 export type GeometryAddition = { entities: SketchEntity[]; constraints: SketchConstraint[] }
 
-/** A snap the pointer acquired, from sketch geometry or the attached face. */
-export type ActiveSnap = ({ source: 'entity' } & SketchEntitySnap) | ({ source: 'face' } & FaceSnap)
+/** A snap the pointer acquired: from sketch geometry, the attached face, or the part's projected edges. */
+export type ActiveSnap =
+  | ({ source: 'entity' } & SketchEntitySnap)
+  | ({ source: 'face' } & FaceSnap)
+  | ({ source: 'projected' } & FaceSnap)
 
 export function distance(a: Vec2, b: Vec2) {
   return Math.hypot(b[0] - a[0], b[1] - a[1])

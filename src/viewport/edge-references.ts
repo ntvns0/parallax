@@ -69,31 +69,33 @@ function usableGroups(segments: EdgeSegment[], edgeGroups: EdgeGroup[]) {
   })
 }
 
+export type EdgeSnapTarget = {
+  point: Vec3
+  snapType: 'hole center' | 'vertex' | 'edge midpoint'
+  radius?: number
+  edgeSegments?: EdgeSegment[]
+}
+
 /**
- * Every discrete measuring target on a solid's edges: the centre of each
- * circular loop, each edge's end vertices, and each edge's midpoint. Without
- * edge groups, every segment is treated as an edge of its own.
+ * Every discrete target on a solid's edges: the centre of each circular loop,
+ * each edge's end vertices, and each edge's midpoint, each once. Without edge
+ * groups, every segment is treated as an edge of its own.
  */
-export function edgeSnapReferences(
-  segments: EdgeSegment[],
-  edgeGroups: EdgeGroup[] | undefined,
-  feature: { id: string; name: string; kind: FeatureKind },
-): MeasurementReference[] {
-  const owner = { featureId: feature.id, featureName: feature.name, featureKind: feature.kind }
-  const references: MeasurementReference[] = findCircularLoopCenters(segments).map((loop) => ({
-    ...owner, point: loop.center, snapType: 'hole center', radius: loop.radius,
+export function edgeSnapTargets(segments: EdgeSegment[], edgeGroups: EdgeGroup[] | undefined): EdgeSnapTarget[] {
+  const targets: EdgeSnapTarget[] = findCircularLoopCenters(segments).map((loop) => ({
+    point: loop.center, snapType: 'hole center', radius: loop.radius,
   }))
   const seen = new Set<string>()
-  const addOnce = (reference: MeasurementReference) => {
-    const key = `${reference.snapType}:${pointKey(reference.point)}`
+  const addOnce = (target: EdgeSnapTarget) => {
+    const key = `${target.snapType}:${pointKey(target.point)}`
     if (seen.has(key)) return
     seen.add(key)
-    references.push(reference)
+    targets.push(target)
   }
   const addEdge = (start: Vec3, end: Vec3, edgeSegments: EdgeSegment[]) => {
-    addOnce({ ...owner, point: start, snapType: 'vertex' })
-    addOnce({ ...owner, point: end, snapType: 'vertex' })
-    addOnce({ ...owner, point: polylineMidpoint(edgeSegments), snapType: 'edge midpoint', edgeSegments })
+    addOnce({ point: start, snapType: 'vertex' })
+    addOnce({ point: end, snapType: 'vertex' })
+    addOnce({ point: polylineMidpoint(edgeSegments), snapType: 'edge midpoint', edgeSegments })
   }
   if (edgeGroups?.length) {
     for (const group of usableGroups(segments, edgeGroups)) {
@@ -106,7 +108,17 @@ export function edgeSnapReferences(
   } else {
     for (const segment of segments) addEdge(segment.start, segment.end, [segment])
   }
-  return references
+  return targets
+}
+
+/** The measuring targets on a solid's edges, as references to the feature that owns the solid. */
+export function edgeSnapReferences(
+  segments: EdgeSegment[],
+  edgeGroups: EdgeGroup[] | undefined,
+  feature: { id: string; name: string; kind: FeatureKind },
+): MeasurementReference[] {
+  const owner = { featureId: feature.id, featureName: feature.name, featureKind: feature.kind }
+  return edgeSnapTargets(segments, edgeGroups).map((target) => ({ ...owner, ...target }))
 }
 
 type ScreenPoint = [number, number]

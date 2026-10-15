@@ -14,6 +14,7 @@ import { FaceHighlight } from './face-highlight'
 import { MeasurementOverlay } from './measurement-overlay'
 import { MeasurementSnapper } from './measurement-snapping'
 import { edgeSourceOf } from './model-edges'
+import { projectPartEdges } from './projected-references'
 import { PushPullGesture } from './push-pull-gesture'
 import { SceneModels } from './scene-models'
 import { classifySketchFace, NO_FACE, sketchFacePickKey, type SketchFacePickResult } from './sketch-face-pick'
@@ -117,6 +118,7 @@ export function SceneViewport(props: ViewportProps) {
         snapper.clearCache()
       },
       canAttachGizmo: () => !inMode(),
+      onSolidsChanged: () => publishProjectedEdges(),
     })
     const pushPull = new PushPullGesture(host, canvas, orbit, picker, () => models.meshes.values())
     const hitAt = (event: PointerEvent) => picker.intersect(event, models.meshes.values())
@@ -163,6 +165,24 @@ export function SceneViewport(props: ViewportProps) {
     models.rebuild()
     syncFilletEdgesRef.current(current().filletEdges)
 
+    /** Offer the open sketch the part's edges, flattened onto its plane, to snap to. */
+    function publishProjectedEdges() {
+      const state = useDocumentStore.getState()
+      const sketch = state.document.features.find((feature) => feature.id === state.activeSketchId)
+      const viewport = useViewportStore.getState()
+      if (sketch?.kind !== 'sketch') {
+        if (viewport.projectedReferences) viewport.setProjectedReferences(null)
+        return
+      }
+      const parts = [...models.meshes.values()].flatMap((mesh) => {
+        const source = edgeSourceOf(mesh)
+        if (!source) return []
+        mesh.updateWorldMatrix(true, false)
+        return [{ segments: worldEdgeSegments(source.positions, mesh.matrixWorld), edgeGroups: source.edgeGroups }]
+      })
+      viewport.setProjectedReferences(projectPartEdges(parts, sketch.plane))
+    }
+
     /** Aim the camera at the open sketch, matching the sketcher's own view of it. */
     function followSketch() {
       const state = useDocumentStore.getState()
@@ -190,7 +210,10 @@ export function SceneViewport(props: ViewportProps) {
     const unsubscribeDocument = useDocumentStore.subscribe((state, previous) => {
       if (state.document !== previous.document) models.documentChanged()
       else if (state.selectedId !== previous.selectedId || state.activeSketchId !== previous.activeSketchId) models.updateSelection()
-      if (state.activeSketchId !== previous.activeSketchId) followSketch()
+      if (state.activeSketchId !== previous.activeSketchId) {
+        followSketch()
+        publishProjectedEdges()
+      }
     })
     const stopCameraCommands = onCameraCommand((command) => {
       if (command.kind === 'view') controller.setCameraView(command.view)
@@ -345,6 +368,7 @@ export function SceneViewport(props: ViewportProps) {
       window.removeEventListener('keyup', requestRender)
       for (const [name, handler] of pointerHandlers) canvas.removeEventListener(name, handler)
       models.dispose()
+      useViewportStore.getState().setProjectedReferences(null)
       overlay.dispose()
       edgeHighlight.dispose()
       transform.dispose()

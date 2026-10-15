@@ -243,6 +243,8 @@ button { color: inherit; }
 .snap-indicator.entity.intersection text { fill: #dfa6f5; }
 .snap-indicator.entity.division circle { fill: #f0d18225; stroke: #f0d182; }
 .snap-indicator.entity.division text { fill: #f0d182; }
+.snap-indicator.projected circle { fill: #a9c8bc1c; stroke: #a9c8bc; stroke-dasharray: 2 2; }
+.snap-indicator.projected text { fill: #c3dbd2; }
 .line-ruler { pointer-events: none; }
 .line-ruler-baseline { stroke: #d8b96b88; stroke-width: .8; vector-effect: non-scaling-stroke; }
 .line-ruler-tick line { stroke: #b09b6688; stroke-width: .8; vector-effect: non-scaling-stroke; }

@@ -57,6 +57,8 @@ export class SceneModels {
       onDispose: () => void
       /** Whether the move gizmo may attach to a selected primitive now. */
       canAttachGizmo: () => boolean
+      /** Called when the solids on screen change: after a rebuild, and as each exact solid arrives. */
+      onSolidsChanged: () => void
     },
   ) {}
 
@@ -107,10 +109,12 @@ export class SceneModels {
         this.controller.requestRender()
         this.updateSelection()
         this.fitLighting()
+        this.options.onSolidsChanged()
       }).catch(() => {})
     }
     this.updateSelection()
     this.fitLighting()
+    this.options.onSolidsChanged()
   }
 
   /** Colour everything for the current selection and mode, and place the move gizmo. */

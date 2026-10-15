@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
-import { findViewportPoint, plate, readDocument } from './helpers'
+import { findViewportPoint, plate, readDocument, sketchPoint } from './helpers'
 
 /**
  * Working on the part directly in the 3D view: pulling a face, picking a face
@@ -102,4 +102,27 @@ test('an orthographic view draws and picks the part, and is remembered', async (
 
   await page.reload()
   await expect(viewport(page).locator('canvas').first()).toHaveAttribute('data-projection', 'orthographic')
+})
+
+test('a new sketch snaps to the part’s edges projected onto its plane', async ({ page }) => {
+  await plate(page)
+  await page.getByRole('button', { name: 'Create sketch' }).click()
+  await page.getByRole('button', { name: /XY plane/ }).click()
+  await page.keyboard.press('l')
+
+  // The plate's corner at (25, 15), approached from slightly off it.
+  const near = await sketchPoint(page, 24.4, 15.5)
+  await page.mouse.move(near.x, near.y)
+  await expect(page.locator('.snap-indicator.projected.corner')).toBeVisible()
+
+  const away = await sketchPoint(page, 40, 15)
+  await page.mouse.down()
+  await page.mouse.move(away.x, away.y, { steps: 4 })
+  await page.mouse.up()
+  await expect.poll(async () => {
+    const sketches = (await readDocument(page)).features.filter((feature) => feature.kind === 'sketch')
+    const latest = sketches.at(-1)
+    const line = latest?.kind === 'sketch' ? latest.entities[0] : undefined
+    return line?.type === 'line' ? line.start : null
+  }).toEqual([25, 15])
 })

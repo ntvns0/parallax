@@ -1,11 +1,24 @@
 import type { SketchFaceAttachment, Vec2 } from './model'
 
+/**
+ * Snapping a sketch point to geometry that is not part of the sketch: the face
+ * a sketch is attached to, or the part's edges projected onto the sketch
+ * plane. Discrete points win over the nearest point along an edge, the way a
+ * corner beats the line it ends.
+ */
+
 export type FaceSnapKind = 'center' | 'corner' | 'midpoint' | 'edge'
 
 export type FaceSnap = {
   point: Vec2
   kind: FaceSnapKind
   edgeIndex?: number
+}
+
+/** Geometry to snap to, in sketch coordinates. */
+export type ReferenceGeometry = {
+  points: { point: Vec2; kind: Exclude<FaceSnapKind, 'edge'> }[]
+  edges: { start: Vec2; end: Vec2 }[]
 }
 
 function distanceSquared(a: Vec2, b: Vec2) {
@@ -23,33 +36,41 @@ function closestPointOnSegment(point: Vec2, start: Vec2, end: Vec2): Vec2 {
   return [start[0] + dx * position, start[1] + dy * position]
 }
 
-export function snapToFaceReference(point: Vec2, attachment: SketchFaceAttachment | undefined, tolerance: number): FaceSnap | null {
-  if (!attachment || tolerance <= 0) return null
-  const anchors: FaceSnap[] = [{ point: attachment.center, kind: 'center' }]
-  attachment.edges.forEach((edge, edgeIndex) => {
-    anchors.push({ point: edge.start, kind: 'corner', edgeIndex })
-    anchors.push({ point: [(edge.start[0] + edge.end[0]) / 2, (edge.start[1] + edge.end[1]) / 2], kind: 'midpoint', edgeIndex })
-  })
-  let bestAnchor: FaceSnap | null = null
+export function snapToReferenceGeometry(point: Vec2, reference: ReferenceGeometry | null | undefined, tolerance: number): FaceSnap | null {
+  if (!reference || tolerance <= 0) return null
+  let best: FaceSnap | null = null
   let bestDistance = tolerance * tolerance
-  for (const candidate of anchors) {
+  for (const candidate of reference.points) {
     const candidateDistance = distanceSquared(point, candidate.point)
     if (candidateDistance < bestDistance) {
-      bestAnchor = candidate
+      best = { point: candidate.point, kind: candidate.kind }
       bestDistance = candidateDistance
     }
   }
-  if (bestAnchor) return bestAnchor
+  if (best) return best
 
-  let bestEdge: FaceSnap | null = null
-  bestDistance = tolerance * tolerance
-  attachment.edges.forEach((edge, edgeIndex) => {
+  reference.edges.forEach((edge, edgeIndex) => {
     const candidate: FaceSnap = { point: closestPointOnSegment(point, edge.start, edge.end), kind: 'edge', edgeIndex }
     const candidateDistance = distanceSquared(point, candidate.point)
     if (candidateDistance < bestDistance) {
-      bestEdge = candidate
+      best = candidate
       bestDistance = candidateDistance
     }
   })
-  return bestEdge
+  return best
+}
+
+/** The attached face's centre, corners, edge midpoints, and edges. */
+export function snapToFaceReference(point: Vec2, attachment: SketchFaceAttachment | undefined, tolerance: number): FaceSnap | null {
+  if (!attachment) return null
+  const points: ReferenceGeometry['points'] = [{ point: attachment.center, kind: 'center' }]
+  for (const edge of attachment.edges) {
+    points.push({ point: edge.start, kind: 'corner' })
+    points.push({ point: [(edge.start[0] + edge.end[0]) / 2, (edge.start[1] + edge.end[1]) / 2], kind: 'midpoint' })
+  }
+  const snap = snapToReferenceGeometry(point, { points, edges: attachment.edges }, tolerance)
+  if (!snap || snap.kind === 'edge') return snap
+  // Corners and midpoints keep naming the edge they came from.
+  const index = points.findIndex((candidate) => candidate.point === snap.point && candidate.kind === snap.kind)
+  return index > 0 ? { ...snap, edgeIndex: Math.floor((index - 1) / 2) } : snap
 }

@@ -46,6 +46,7 @@ import { resolveSketchPoint, type ResolvedPoint } from './sketch-point-resolutio
 import { sketchReadout } from './sketch-readout'
 import { drawingPreview } from './sketch-drawing-preview'
 import { useSketchView } from './use-sketch-view'
+import { useViewportStore } from '../viewport/viewport-store'
 import {
   DrawingPreview,
   FaceReferenceGeometry,
@@ -102,6 +103,7 @@ export function SketchEditor({ sketchId }: { sketchId: string }) {
   const feature = useDocumentStore((state) => state.document.features.find((candidate) => candidate.id === sketchId))
   const sketch = feature?.kind === 'sketch' ? feature : undefined
   const displayUnits = useDocumentStore((state) => state.document.displayUnits ?? 'mm')
+  const projectedReferences = useViewportStore((state) => state.projectedReferences)
   const sketchSnap = sketchSnapIncrement(displayUnits)
   const tool = useDocumentStore((state) => state.sketchTool)
   const solver = useConstraintSolverStore()
@@ -254,6 +256,7 @@ export function SketchEditor({ sketchId }: { sketchId: string }) {
       gridIncrement: sketchSnap,
       rulerDatum,
       attachment: activeSketch.attachment,
+      projected: projectedReferences,
     })
   }
 
