@@ -24,6 +24,14 @@ function isRound(entity: SketchEntity): entity is Extract<SketchEntity, { type: 
   return entity.type === 'circle' || entity.type === 'arc'
 }
 
+/** Whether `ref` names a point this entity has: line ends, arc ends and centre, a circle's centre. */
+function hasPoint(entity: SketchEntity | undefined, ref: SketchPointRef | undefined): ref is SketchPointRef {
+  if (!entity || !ref) return false
+  if (entity.type === 'line') return ref === 'start' || ref === 'end'
+  if (entity.type === 'circle') return ref === 'center'
+  return true
+}
+
 function tangentPrimitive(id: string, first: SketchEntity, second: SketchEntity): SketchPrimitive | null {
   const line = first.type === 'line' ? first : second.type === 'line' ? second : null
   const round = first.type === 'line' ? second : first
@@ -89,8 +97,7 @@ export function constraintPrimitive(
 
     case 'pointOnLine': {
       const ref = constraint.pointRefs?.[0]
-      if ((first?.type !== 'line' && first?.type !== 'arc') || second?.type !== 'line'
-        || (ref !== 'start' && ref !== 'end')) return null
+      if (!hasPoint(first, ref) || second?.type !== 'line') return null
       return {
         id,
         type: 'point_on_line_pl',
@@ -101,8 +108,7 @@ export function constraintPrimitive(
 
     case 'midpoint': {
       const ref = constraint.pointRefs?.[0]
-      if ((first?.type !== 'line' && first?.type !== 'arc') || second?.type !== 'line'
-        || (ref !== 'start' && ref !== 'end')) return null
+      if (!hasPoint(first, ref) || second?.type !== 'line') return null
       return {
         id,
         type: 'p2p_symmetric_ppp',
@@ -174,5 +180,27 @@ export function constraintPrimitive(
 
     case 'equal':
       return first && second ? equalPrimitive(id, first, second) : null
+
+    case 'pointOnCircle': {
+      const ref = constraint.pointRefs?.[0]
+      if (!hasPoint(first, ref) || !second || !isRound(second)) return null
+      const p_id = pointId(firstId, ref)
+      return second.type === 'circle'
+        ? { id, type: 'point_on_circle', p_id, c_id: secondId }
+        : { id, type: 'point_on_arc', p_id, a_id: secondId }
+    }
+
+    case 'pointLineDistance': {
+      const ref = constraint.pointRefs?.[0]
+      if (!hasPoint(first, ref) || second?.type !== 'line' || typeof constraint.value !== 'number') return null
+      return { id, type: 'p2l_distance', p_id: pointId(firstId, ref), l_id: secondId, distance: constraint.value }
+    }
+
+    case 'symmetric': {
+      const [firstRef, secondRef] = constraint.pointRefs ?? []
+      const axis = entityById.get(constraint.entityIds[2])
+      if (!hasPoint(first, firstRef) || !hasPoint(second, secondRef) || axis?.type !== 'line') return null
+      return { id, type: 'p2p_symmetric_ppl', p1_id: pointId(firstId, firstRef), p2_id: pointId(secondId, secondRef), l_id: axis.id }
+    }
   }
 }

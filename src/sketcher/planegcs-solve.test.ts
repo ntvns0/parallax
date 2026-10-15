@@ -74,3 +74,56 @@ describe('solveWithPlaneGcs', () => {
     expect(named.every((id) => doubled.some((constraint) => constraint.id === id))).toBe(true)
   })
 })
+
+describe('point and symmetry constraints in PlaneGCS', () => {
+  it('places a D-flat by its distance from the bore centre', () => {
+    // The intent A4 needs: the flat 1.2 from the centre, whatever the chord.
+    const { entities, constraints } = dProfile(3)
+    const placed = constraints.filter((constraint) => constraint.id !== 'chord')
+    placed.push({ id: 'offset', type: 'pointLineDistance', entityIds: ['arc', 'flat'], pointRefs: ['center'], value: 1.2 })
+    const response = solveWithPlaneGcs(wrapper, { id: 1, entities, constraints: placed, anchor: { entityId: 'arc', point: 'center' } })
+    const [arc, flat] = response.entities as [ArcEntity, LineEntity]
+
+    expect(response.converged).toBe(true)
+    expect(response.unsupported).toEqual([])
+    expect(flat.start[0]).toBeCloseTo(1.2, 7)
+    expect(distance(arcEndPoint(arc), flat.start)).toBeLessThan(1e-7)
+  })
+
+  it('mirrors one line onto another across a centreline', () => {
+    const left: LineEntity = { id: 'left', type: 'line', start: [-5, 0], end: [-5, 9], construction: false }
+    const right: LineEntity = { id: 'right', type: 'line', start: [6, 1], end: [7, 8], construction: false }
+    const axis: LineEntity = { id: 'axis', type: 'line', start: [0, -5], end: [0, 20], construction: true }
+    const constraints: SketchConstraint[] = [
+      { id: 'axisV', type: 'vertical', entityIds: ['axis'] },
+      { id: 'leftV', type: 'vertical', entityIds: ['left'] },
+      { id: 'leftLength', type: 'distance', entityIds: ['left'], value: 9 },
+      { id: 'mirrorStart', type: 'symmetric', entityIds: ['left', 'right', 'axis'], pointRefs: ['start', 'start'] },
+      { id: 'mirrorEnd', type: 'symmetric', entityIds: ['left', 'right', 'axis'], pointRefs: ['end', 'end'] },
+    ]
+    const response = solveWithPlaneGcs(wrapper, { id: 1, entities: [left, right, axis], constraints, anchor: { entityId: 'axis', point: 'start' } })
+    const [solvedLeft, solvedRight] = response.entities as LineEntity[]
+
+    expect(response.converged).toBe(true)
+    expect(solvedRight.start[0]).toBeCloseTo(-solvedLeft.start[0], 7)
+    expect(solvedRight.start[1]).toBeCloseTo(solvedLeft.start[1], 7)
+    expect(solvedRight.end[0]).toBeCloseTo(-solvedLeft.end[0], 7)
+  })
+
+  it('holds a line’s end on a circle', () => {
+    const spoke: LineEntity = { id: 'spoke', type: 'line', start: [0, 0], end: [4, 1], construction: false }
+    const constraints: SketchConstraint[] = [
+      { id: 'radius', type: 'radius', entityIds: ['ring'], value: 5 },
+      { id: 'onRing', type: 'pointOnCircle', entityIds: ['spoke', 'ring'], pointRefs: ['end'] },
+    ]
+    const response = solveWithPlaneGcs(wrapper, {
+      id: 1,
+      entities: [spoke, { id: 'ring', type: 'circle', center: [0, 0], radius: 5, construction: false }],
+      constraints,
+      anchor: { entityId: 'ring', point: 'center' },
+    })
+    const solved = response.entities[0] as LineEntity
+    expect(response.converged).toBe(true)
+    expect(Math.hypot(...solved.end)).toBeCloseTo(5, 7)
+  })
+})

@@ -90,7 +90,7 @@ Every part is checked three ways:
 | # | Part | What it exercises | Edit test | Missing today |
 | --- | --- | --- | --- | --- |
 | A1 | **Screw-mount L-bracket.** 40 mm wide, legs of 50 and 30 mm, 4 mm thick, R4 inside corner, 1 mm chamfer on outside edges, two countersunk M4 holes per leg | Face sketches, extrude, fillet, chamfer, Hole, linear pattern | Thickness 4 → 6, hole count 2 → 3 per leg | Chamfer, Hole, linear pattern |
-| A2 | **Desk cable clip.** Screw-down base, a C-shaped Ø10 cable channel with 2 mm walls and a 7 mm snap opening, symmetric about a centreline, 15 mm deep, one countersunk hole in the base | Arcs, trim, sketch fillet, construction centreline, symmetric constraint, offset, mirror | Channel Ø10 → Ø14, wall 2 → 2.5 | Symmetric constraint, sketch offset, mirror |
+| A2 | **Desk cable clip.** Screw-down base, a C-shaped Ø10 cable channel with 2 mm walls and a 7 mm snap opening, symmetric about a centreline, 15 mm deep, one countersunk hole in the base | Arcs, trim, sketch fillet, construction centreline, symmetric constraint, offset, mirror | Channel Ø10 → Ø14, wall 2 → 2.5 | Sketch offset, mirror, Hole |
 | A3 | **Electronics enclosure with lid.** 80 × 50 × 30 mm box, shelled to 2 mm with an open top, R3 vertical edges, four Ø6 standoffs with Ø4.2 heat-set insert holes in a rectangular pattern, a USB-C cutout in a side wall, and a separate lid body with a lip set by a `clearance = 0.2 mm` parameter and a pattern of vent slots | Shell, multiple bodies, rectangular pattern, side-face sketches, Hole, per-body export | Box 80 × 50 → 100 × 60, clearance 0.2 → 0.3 | Shell, multiple bodies, rectangular pattern, Hole, per-body export |
 | A4 | **Parametric knob.** A revolved body, a 6 mm D-shaft bore with the flat at 4.5 mm plus clearance, 24 grip grooves in a circular pattern, and a chamfered top edge | Revolve, construction axis, circular pattern, chamfer, formula-driven dimensions | Groove count 24 → 18, shaft 6 → 5 | Circular pattern, chamfer |
 
@@ -344,12 +344,23 @@ it needs one.
     - A4's knob now revolves about its own centreline.
     - `e2e/sketcher.spec.ts` makes a centreline with Q and revolves about it.
   - Symmetry about a centreline is 3.2.
-- ⬜ **3.2 Symmetric, midpoint, and point-on-object constraints** (A2, and
-  generally needed to fully constrain anything). Midpoint and point-on-line
-  already reach PlaneGCS through `constraint-primitives.ts`, created by
-  snapping; expose them on a selection. Symmetric and point-on-arc are new, and so is a
-  point-to-line distance. A4 has to place its D-flat by the length of its
-  chord because no dimension can measure from the bore centre to the flat.
+- ✅ **3.2 Symmetric, midpoint, and point-on-object constraints** (A2, and
+  generally needed to fully constrain anything). Done.
+  - Selection order decides who is who: the last entity picked is the target.
+    The point comes from the first entity's centre if it is round, otherwise
+    from its end nearest the target.
+  - Two picks offer **On line**, **To midpoint** and **Distance to line** (a
+    dimension, so it takes formulas), and **On circle / On arc**.
+  - Three picks (two of a kind, then a line) offer **Symmetric**. Each end
+    pairs with whichever end sits nearer its mirror image.
+  - New constraint types `pointOnCircle`, `pointLineDistance` and `symmetric`
+    are part of schema 9. On line and midpoint now also take a centre.
+  - Proof:
+    - `planegcs-solve.test.ts` holds a D-flat at a distance from its centre, a
+      mirrored line, and an end on a circle, all through the real PlaneGCS.
+    - A4 now places its flat by centre-to-flat distance, not chord length.
+    - `e2e/sketcher.spec.ts` dimensions a circle centre to a line and drives it.
+  - A2 now waits only on offset, mirror, and Hole.
 - ⬜ **3.3 Chamfer** (A1, A4). Equal-distance, then distance-and-angle. Reuse the
   fillet's edge anchors, limit search, and repair action wholesale; a chamfer is
   the same feature with a different blend.

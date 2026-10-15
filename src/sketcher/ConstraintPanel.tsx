@@ -2,8 +2,8 @@ import { useEffect, useState } from 'react'
 import { Trash2 } from 'lucide-react'
 import { isDimensionConstraint, type DisplayUnits, type SketchConstraint, type SketchFeature } from '../core/model'
 import { formatLengthInput, parseLengthInput, unitLabel } from '../core/units'
-import { CONSTRAINT_LABELS, availableConstraints, buildConstraint, describeConstraint } from './constraint-authoring'
-import { applySketchConstraint, applySketchConstraintFormula, applySketchConstraintValue, removeSketchConstraint } from './sketch-edits'
+import { CONSTRAINT_LABELS, availableConstraints, buildConstraints, describeConstraint } from './constraint-authoring'
+import { applySketchConstraints, applySketchConstraintFormula, applySketchConstraintValue, removeSketchConstraint } from './sketch-edits'
 
 /**
  * The sketch's constraints, as something a user can read and change.
@@ -31,9 +31,9 @@ export function ConstraintPanel({ sketch, selectedEntityIds, conflicting, redund
     ...unsupported.map((id) => [id, 'not applied'] as const),
   ])
 
-  function add(type: Parameters<typeof buildConstraint>[0]) {
-    const constraint = buildConstraint(type, sketch.entities, selectedEntityIds)
-    if (constraint) void applySketchConstraint(sketch.id, constraint)
+  function add(type: Parameters<typeof buildConstraints>[0]) {
+    const constraints = buildConstraints(type, sketch.entities, selectedEntityIds)
+    if (constraints.length) void applySketchConstraints(sketch.id, constraints)
   }
 
   return (
@@ -56,8 +56,10 @@ export function ConstraintPanel({ sketch, selectedEntityIds, conflicting, redund
         <p className="constraint-hint">
           {selectedEntityIds.length === 0
             ? 'Select geometry to add a constraint. Shift-click to select a second entity.'
-            : selectedEntityIds.length > 2
-              ? 'Select one or two entities.'
+            : selectedEntityIds.length > 3
+              ? 'Select up to three entities.'
+              : selectedEntityIds.length === 3
+                ? 'Two of a kind, then a centreline last, can be made symmetric.'
               : 'No constraint applies to this selection.'}
         </p>
       )}

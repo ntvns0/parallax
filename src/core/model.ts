@@ -209,6 +209,12 @@ export type SketchConstraintType =
   | 'pointOnLine'
   | 'midpoint'
   | 'pointDistance'
+  /** A point of the first entity on the second, a circle or arc. Schema 9. */
+  | 'pointOnCircle'
+  /** The distance from a point of the first entity to the line through the second. Schema 9. */
+  | 'pointLineDistance'
+  /** A point of each of the first two entities, mirrored across the third, a line. Schema 9. */
+  | 'symmetric'
 
 /** Which named point of an entity a constraint refers to. */
 export type SketchPointRef = 'start' | 'end' | 'center'
@@ -230,7 +236,7 @@ export type SketchConstraint = {
 }
 
 /** Constraint kinds that carry an editable measurement. */
-export const DIMENSION_CONSTRAINTS: readonly SketchConstraintType[] = ['radius', 'distance', 'angle', 'pointDistance']
+export const DIMENSION_CONSTRAINTS: readonly SketchConstraintType[] = ['radius', 'distance', 'angle', 'pointDistance', 'pointLineDistance']
 
 export function isDimensionConstraint(constraint: SketchConstraint): boolean {
   return DIMENSION_CONSTRAINTS.includes(constraint.type)

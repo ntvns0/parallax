@@ -116,3 +116,28 @@ test('a construction centreline becomes the axis a revolve turns about', async (
   expect(revolve.kind === 'revolve' && revolve.axisEntityId).toBe(centreline.id)
   await expect(page.getByLabel('3D modeling viewport')).toHaveAttribute('data-exact-features', new RegExp(revolve.id), { timeout: 60_000 })
 })
+
+test('dimensions from a circle’s centre to a line, and the dimension drives', async ({ page }) => {
+  await page.goto('/?test=1')
+  await page.getByRole('button', { name: 'Create sketch' }).click()
+  await page.getByRole('button', { name: /XY plane/ }).click()
+  await page.keyboard.press('c')
+  await drag(page, [0, 0], [3, 0])
+  await page.keyboard.press('l')
+  await drag(page, [6, -5], [6, 5])
+
+  // The circle first, then the line: the last pick is the target.
+  await page.keyboard.press('v')
+  await click(page, 0, 3)
+  await page.keyboard.down('Shift')
+  await click(page, 6, 2)
+  await page.keyboard.up('Shift')
+  await page.getByRole('button', { name: 'Distance to line', exact: true }).click()
+  await expect(page.getByLabel('Distance to line value')).toHaveValue('6')
+
+  await commit(page, 'Distance to line value', '4')
+  await expect.poll(async () => {
+    const line = (await sketchEntities(page))?.entities.find((entity) => entity.type === 'line')
+    return line?.type === 'line' ? round(line.start[0]) : null
+  }).toBe(4)
+})

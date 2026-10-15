@@ -9,15 +9,12 @@ import { closedPolyline, drivenLength, feature, parameter, settle } from '../har
  * D-shaft bore with a clearance allowance. Waiting on a circular pattern for
  * the grip grooves and chamfer for the top edge.
  *
- * Without a centre-to-line dimension, the flat is placed by the length of its
- * chord: 2·√(r² − d²), where d is how far the flat sits from the bore centre.
- * That is the right geometry but the wrong intent, and it is what Phase 3.2's
- * point-to-line distance replaces.
+ * The flat is placed the way a shaft is specified: by its distance from the
+ * bore centre, a centre-to-line dimension.
  */
 
 const BORE_RADIUS = '(shaft + clearance) / 2'
 const FLAT_OFFSET = `(flat + clearance / 2 - ${BORE_RADIUS})`
-const CHORD = `2 * sqrt((${BORE_RADIUS}) ^ 2 - ${FLAT_OFFSET} ^ 2)`
 
 export function buildKnob(): CadDocument {
   const radius = 15
@@ -61,7 +58,7 @@ export function buildKnob(): CadDocument {
       { id: createId(), type: 'vertical', entityIds: [flatLine.id] },
       { id: createId(), type: 'coincident', entityIds: [arc.id, flatLine.id], pointRefs: ['end', 'start'] },
       { id: createId(), type: 'coincident', entityIds: [flatLine.id, arc.id], pointRefs: ['end', 'start'] },
-      drivenLength(flatLine.id, 2 * h, CHORD),
+      { id: createId(), type: 'pointLineDistance', entityIds: [arc.id, flatLine.id], pointRefs: ['center'], value: d, formula: FLAT_OFFSET },
     ],
     anchor: { entityId: arc.id, point: 'center' },
   })

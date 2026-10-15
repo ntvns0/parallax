@@ -258,16 +258,16 @@ export async function applySketchFillet(sketchId: string, firstId: string, secon
 }
 
 /**
- * Assert a new relationship between existing geometry and re-solve.
+ * Assert new relationships between existing geometry and re-solve.
  *
  * The constraint is added before solving, so a request the solver cannot
  * satisfy shows up as a reported conflict naming this constraint rather than
  * disappearing without explanation.
  */
-export async function applySketchConstraint(sketchId: string, constraint: SketchConstraint) {
+export async function applySketchConstraints(sketchId: string, constraints: SketchConstraint[]) {
   const sketch = readSketch(sketchId)
   if (!sketch) return
-  await solveAndCommit(sketch, sketch.entities, [...sketch.constraints, constraint])
+  await solveAndCommit(sketch, sketch.entities, [...sketch.constraints, ...constraints])
 }
 
 /** Remove a constraint and re-solve with the freedom it was taking up. */

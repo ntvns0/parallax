@@ -1,7 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import { normalizeArc } from '../core/arc-geometry'
 import { createId, type SketchEntity, type Vec2 } from '../core/model'
-import { availableConstraints, buildConstraint, describeConstraint } from './constraint-authoring'
+import { availableConstraints, buildConstraints, describeConstraint } from './constraint-authoring'
+
+/** The one constraint an option builds, or null. */
+function buildConstraint(...args: Parameters<typeof buildConstraints>) {
+  const built = buildConstraints(...args)
+  return built.length === 1 ? built[0] : null
+}
 
 const HALF_PI = Math.PI / 2
 
@@ -40,7 +46,7 @@ describe('availableConstraints', () => {
   it('relates two lines by direction and length', () => {
     const entities = [line([0, 0], [10, 0]), line([0, 5], [10, 5])]
     expect(typesFor(entities, entities.map((entity) => entity.id)))
-      .toEqual(['coincident', 'equal', 'parallel', 'perpendicular'])
+      .toEqual(['coincident', 'equal', 'midpoint', 'parallel', 'perpendicular', 'pointLineDistance', 'pointOnLine'])
   })
 
   // Two straight lines have no curvature to meet smoothly, and PlaneGCS has no
@@ -78,9 +84,21 @@ describe('availableConstraints', () => {
     expect(typesFor(entities, entities.map((entity) => entity.id))).not.toContain('coincident')
   })
 
-  it('offers nothing for three entities', () => {
-    const entities = [line([0, 0], [1, 0]), line([0, 1], [1, 1]), line([0, 2], [1, 2])]
-    expect(availableConstraints(entities, entities.map((entity) => entity.id))).toEqual([])
+  it('offers symmetry for two of a kind and a line picked last, and nothing else for three', () => {
+    const entities = [line([-5, 0], [-5, 9]), line([5, 0], [5, 9]), line([0, -5], [0, 20])]
+    expect(typesFor(entities, entities.map((entity) => entity.id))).toEqual(['symmetric'])
+    const mixed = [line([-5, 0], [-5, 9]), circle([5, 0], 2), line([0, -5], [0, 20])]
+    expect(availableConstraints(mixed, mixed.map((entity) => entity.id))).toEqual([])
+  })
+
+  it('offers point relations to a line picked last', () => {
+    const entities = [circle([3, 4], 1), line([0, 0], [10, 0])]
+    expect(typesFor(entities, entities.map((entity) => entity.id))).toEqual(['midpoint', 'pointLineDistance', 'pointOnLine', 'tangent'])
+  })
+
+  it('offers a point on a curve picked last', () => {
+    const entities = [line([0, 0], [10, 0]), circle([15, 0], 5)]
+    expect(typesFor(entities, entities.map((entity) => entity.id))).toContain('pointOnCircle')
   })
 
   it('ignores ids that name nothing', () => {
@@ -91,7 +109,7 @@ describe('availableConstraints', () => {
   })
 })
 
-describe('buildConstraint', () => {
+describe('buildConstraints', () => {
   it('joins the two nearest ends', () => {
     // The lines nearly touch at [10, 0] — the first line's end and the second's
     // start — so those are the pair that should be held together.
@@ -151,5 +169,45 @@ describe('describeConstraint', () => {
       { id: 'c', type: 'parallel', entityIds: [entities[0].id, 'gone'] },
       entities,
     )).toBe('Line 1 · ?')
+  })
+})
+
+describe('point and symmetry constraints', () => {
+  it('dimensions from a circle’s centre to a line at its present distance', () => {
+    const bore = circle([0, 0], 3)
+    const flat = line([1.5, -5], [1.5, 5])
+    const constraint = buildConstraint('pointLineDistance', [bore, flat], [bore.id, flat.id])
+    expect(constraint).toMatchObject({ entityIds: [bore.id, flat.id], pointRefs: ['center'] })
+    expect(constraint!.value).toBeCloseTo(1.5)
+  })
+
+  it('puts a line’s nearer end on a curve', () => {
+    const spoke = line([0, 0], [4.9, 0.2])
+    const ring = circle([0, 0], 5)
+    expect(buildConstraint('pointOnCircle', [spoke, ring], [spoke.id, ring.id])!.pointRefs).toEqual(['end'])
+  })
+
+  it('takes a line’s end nearest the other line’s midpoint for a midpoint', () => {
+    const leg = line([4.8, 9], [5.2, 0.3])
+    const base = line([0, 0], [10, 0])
+    expect(buildConstraint('midpoint', [leg, base], [leg.id, base.id])!.pointRefs).toEqual(['end'])
+  })
+
+  it('pairs each end of two lines with its mirror image across the centreline', () => {
+    // The right line is drawn top to bottom, so its end mirrors the left start.
+    const left = line([-5, 0], [-5, 9])
+    const right = line([5, 9], [5, 0])
+    const axis = line([0, -5], [0, 20])
+    const built = buildConstraints('symmetric', [left, right, axis], [left.id, right.id, axis.id])
+    expect(built.map((constraint) => constraint.pointRefs)).toEqual([['start', 'end'], ['end', 'start']])
+    expect(built.every((constraint) => constraint.entityIds[2] === axis.id)).toBe(true)
+  })
+
+  it('mirrors two circles by their centres', () => {
+    const left = circle([-5, 3], 2)
+    const right = circle([5, 3], 2)
+    const axis = line([0, -5], [0, 20])
+    expect(buildConstraints('symmetric', [left, right, axis], [left.id, right.id, axis.id]).map((constraint) => constraint.pointRefs))
+      .toEqual([['center', 'center']])
   })
 })

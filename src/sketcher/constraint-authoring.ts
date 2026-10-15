@@ -44,14 +44,67 @@ function endpointsOf(entity: SketchEntity): { ref: SketchPointRef; point: Vec2 }
   return []
 }
 
+/** Every point an entity has that a constraint can name: ends, and a centre. */
+function pointsOf(entity: SketchEntity): { ref: SketchPointRef; point: Vec2 }[] {
+  return isRound(entity) ? [...endpointsOf(entity), { ref: 'center', point: entity.center }] : endpointsOf(entity)
+}
+
+/** The point of `entity` nearest `target`, which is the one a user drawing them close together meant. */
+function nearestPoint(entity: SketchEntity, target: Vec2): { ref: SketchPointRef; point: Vec2 } {
+  const points = pointsOf(entity)
+  let best = points[0]
+  for (const candidate of points) {
+    if (Math.hypot(candidate.point[0] - target[0], candidate.point[1] - target[1]) < Math.hypot(best.point[0] - target[0], best.point[1] - target[1])) best = candidate
+  }
+  return best
+}
+
+/** The point a point constraint means: a round entity's centre, or the end nearest `target`. */
+function pointFor(entity: SketchEntity, target: Vec2): { ref: SketchPointRef; point: Vec2 } {
+  return isRound(entity) ? { ref: 'center', point: entity.center } : nearestPoint(entity, target)
+}
+
+function lineMidpoint(line: Extract<SketchEntity, { type: 'line' }>): Vec2 {
+  return [(line.start[0] + line.end[0]) / 2, (line.start[1] + line.end[1]) / 2]
+}
+
+/** The point on the infinite line through `line` nearest `point`, and the distance to it. */
+function toLine(point: Vec2, line: Extract<SketchEntity, { type: 'line' }>) {
+  const dx = line.end[0] - line.start[0]
+  const dy = line.end[1] - line.start[1]
+  const length = Math.hypot(dx, dy) || 1
+  const along = ((point[0] - line.start[0]) * dx + (point[1] - line.start[1]) * dy) / length
+  const foot: Vec2 = [line.start[0] + (dx / length) * along, line.start[1] + (dy / length) * along]
+  return { foot, distance: Math.hypot(point[0] - foot[0], point[1] - foot[1]) }
+}
+
+/** `point` mirrored across the line through `line`. */
+function mirror(point: Vec2, line: Extract<SketchEntity, { type: 'line' }>): Vec2 {
+  const { foot } = toLine(point, line)
+  return [2 * foot[0] - point[0], 2 * foot[1] - point[1]]
+}
+
 function selected(entities: SketchEntity[], selectedIds: string[]): SketchEntity[] {
   return selectedIds
     .map((id) => entities.find((entity) => entity.id === id))
     .filter((entity): entity is SketchEntity => Boolean(entity))
 }
 
+/**
+ * What a selection can be given. Selection order says who is who: the last
+ * entity picked is the target — the line a point goes on, the circle it sits
+ * on, the centreline two things are mirrored across.
+ */
 export function availableConstraints(entities: SketchEntity[], selectedIds: string[]): ConstraintOption[] {
   const picked = selected(entities, selectedIds)
+
+  if (picked.length === 3) {
+    const [first, second, axis] = picked
+    const mirrorable = first.type === second.type && first.type !== 'arc'
+    return axis.type === 'line' && mirrorable
+      ? [{ type: 'symmetric', label: 'Symmetric', hint: 'Mirror the first two across the last, a centreline' }]
+      : []
+  }
 
   if (picked.length === 1) {
     const [only] = picked
@@ -95,6 +148,18 @@ export function availableConstraints(entities: SketchEntity[], selectedIds: stri
     options.push({ type: 'coincident', label: 'Join', hint: 'Hold the nearest two ends together' })
   }
 
+  if (second.type === 'line') {
+    options.push(
+      { type: 'pointOnLine', label: 'On line', hint: 'Hold the first selection’s nearest end, or its centre, on the line through the last' },
+      { type: 'midpoint', label: 'To midpoint', hint: 'Hold the first selection’s nearest end, or its centre, at the last line’s midpoint' },
+      { type: 'pointLineDistance', label: 'Distance to line', hint: 'Dimension from the first selection’s nearest end, or its centre, to the last line' },
+    )
+  }
+
+  if (isRound(second) && endpointsOf(first).length) {
+    options.push({ type: 'pointOnCircle', label: second.type === 'arc' ? 'On arc' : 'On circle', hint: 'Hold the first selection’s nearest end on the last selection’s curve' })
+  }
+
   return options
 }
 
@@ -117,39 +182,63 @@ function nearestEnds(first: SketchEntity, second: SketchEntity): [SketchPointRef
 }
 
 /**
- * Build the constraint an option stands for, or null when the selection cannot
+ * Build the constraints an option stands for — usually one; symmetry between
+ * two lines is one per pair of ends — or none when the selection cannot
  * support it after all.
  */
-export function buildConstraint(
+export function buildConstraints(
   type: SketchConstraintType,
   entities: SketchEntity[],
   selectedIds: string[],
-): SketchConstraint | null {
+): SketchConstraint[] {
   const picked = selected(entities, selectedIds)
+  const offered = availableConstraints(entities, selectedIds).some((option) => option.type === type)
+  if (!offered) return []
 
-  if (type === 'horizontal' || type === 'vertical') {
-    const [only] = picked
-    if (picked.length !== 1 || only.type !== 'line') return null
-    return { id: createId(), type, entityIds: [only.id] }
+  if (type === 'horizontal' || type === 'vertical') return [{ id: createId(), type, entityIds: [picked[0].id] }]
+
+  if (type === 'symmetric') {
+    const [first, second, axis] = picked
+    if (axis.type !== 'line') return []
+    const pairs: [SketchPointRef, SketchPointRef][] = isRound(first)
+      ? [['center', 'center']]
+      // Each end of the first goes with whichever end of the second sits
+      // nearer its mirror image, so the pairing follows the drawing.
+      : endpointsOf(first).map(({ ref, point }) => [ref, nearestPoint(second, mirror(point, axis)).ref])
+    return pairs.map((pointRefs) => ({ id: createId(), type, entityIds: [first.id, second.id, axis.id], pointRefs }))
   }
 
-  if (picked.length !== 2) return null
   const [first, second] = picked
-
   if (type === 'coincident') {
     const refs = nearestEnds(first, second)
-    if (!refs) return null
-    return { id: createId(), type, entityIds: [first.id, second.id], pointRefs: refs }
+    return refs ? [{ id: createId(), type, entityIds: [first.id, second.id], pointRefs: refs }] : []
   }
-
   if (type === 'concentric') {
-    if (!isRound(first) || !isRound(second)) return null
-    return { id: createId(), type, entityIds: [first.id, second.id], pointRefs: ['center', 'center'] }
+    return [{ id: createId(), type, entityIds: [first.id, second.id], pointRefs: ['center', 'center'] }]
   }
+  if (type === 'pointOnLine' || type === 'midpoint' || type === 'pointLineDistance') {
+    if (second.type !== 'line') return []
+    const { ref, point } = pointFor(first, type === 'midpoint' ? lineMidpoint(second) : nearestToLine(first, second))
+    const value = type === 'pointLineDistance' ? { value: toLine(point, second).distance } : {}
+    return [{ id: createId(), type, entityIds: [first.id, second.id], pointRefs: [ref], ...value }]
+  }
+  if (type === 'pointOnCircle') {
+    if (!isRound(second)) return []
+    return [{ id: createId(), type, entityIds: [first.id, second.id], pointRefs: [nearestEndToCurve(first, second)] }]
+  }
+  return [{ id: createId(), type, entityIds: [first.id, second.id] }]
+}
 
-  const offered = availableConstraints(entities, selectedIds).some((option) => option.type === type)
-  if (!offered) return null
-  return { id: createId(), type, entityIds: [first.id, second.id] }
+/** The end of `entity` nearest the line through `line`, or its centre if it has no ends. */
+function nearestToLine(entity: SketchEntity, line: Extract<SketchEntity, { type: 'line' }>): Vec2 {
+  const points = pointsOf(entity)
+  return points.reduce((best, candidate) => toLine(candidate.point, line).distance < toLine(best.point, line).distance ? candidate : best).point
+}
+
+/** The end of `entity` nearest the curve of a circle or arc. */
+function nearestEndToCurve(entity: SketchEntity, round: Extract<SketchEntity, { type: 'circle' | 'arc' }>): SketchPointRef {
+  const offCurve = (point: Vec2) => Math.abs(Math.hypot(point[0] - round.center[0], point[1] - round.center[1]) - round.radius)
+  return endpointsOf(entity).reduce((best, candidate) => offCurve(candidate.point) < offCurve(best.point) ? candidate : best).ref
 }
 
 /** How a constraint reads in the constraint list. */
@@ -179,4 +268,7 @@ export const CONSTRAINT_LABELS: Record<SketchConstraintType, string> = {
   pointOnLine: 'Point on line',
   midpoint: 'Midpoint',
   pointDistance: 'Along line',
+  pointOnCircle: 'On curve',
+  pointLineDistance: 'Distance to line',
+  symmetric: 'Symmetric',
 }

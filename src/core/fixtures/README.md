@@ -21,7 +21,7 @@ documents:
 
 | Version | Differs from the next version by |
 | --- | --- |
-| v8 | Revolves cannot name a sketch line as their axis. The plate has no revolve, so v8 and v9 differ only in their version number. |
+| v8 | Revolves cannot name a sketch line as their axis, and sketches have no point-on-curve, point-to-line distance or symmetric constraints. The plate uses none of these, so v8 and v9 differ only in their version number. |
 | v7 | No parameter table and no formulas |
 | v6 | No face anchor on the face-attached sketch |
 | v5 | No anchors on fillet edges |
