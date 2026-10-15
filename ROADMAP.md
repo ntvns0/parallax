@@ -1,6 +1,6 @@
 # Parallax Roadmap
 
-Last updated: August 4, 2026 (revolve made exact in the viewport, golden-part regression corpus, and prefix caching)
+Last updated: October 15, 2026 (scope set to personal 3D-print use, four acceptance parts defined, and a phased plan replaces the old start-here list)
 
 This document tracks what Parallax can do, what the project is actively building, and the milestones required to become a professional browser-native parametric CAD system.
 
@@ -44,34 +44,267 @@ The project is still a pre-alpha. It proves the browser architecture and the pri
 | Named parameters | ✅ | Document parameter table, `=` formulas on feature and sketch dimensions, rename propagation, broken-formula degradation and repair |
 | Assemblies | ⬜ | Not started |
 
-## Next session — start here
+## Scope — October 2026
 
-Ordered by value, with the reasoning rather than just the task.
+Parallax is a personal tool first: a browser CAD system good enough to design
+the parts its author actually 3D-prints, built so that other people could use it
+later. Almost all of the code is written by agents, with human review.
 
-0. **Move sketching into the 3D viewport.** The sketcher is an SVG surface that
-   replaces the scene, so the model disappears while you draw on it. That is the
-   ceiling on how the application feels, and it is also what blocks projected
-   geometry, arbitrary datum planes, and in-context modeling — each of which is
-   listed elsewhere in this roadmap as if it were an independent task. The pure
-   logic (`sketch-view`, `entity-snap`, `line-inference`, `tangent-arc`,
-   `constraint-*`, `sketch-edits`) survives the move; what changes is the render
-   surface and the model↔screen transform becoming a camera projection. Every
-   sketch tool added before this migration is written twice, so it should happen
-   *before* item 4, not after.
-1. **Repair actions, not just repair advice.** ✅ An oversized fillet offers an "apply suggested radius" control backed by the kernel-verified value, and an unresolved fillet can replace its stale edge references in the viewport without recreating the feature.
-2. **Consolidate the tolerance constants.** ✅ Reference anchors, face ownership, coplanarity, and fillet-edge matching now use one documented tolerance policy. Linear distances and squared-distance scores are named with their units, and tests preserve the intentional strictness ordering between modeling and presentation decisions.
-3. **One broken-reference state.** ✅ Fillet edges, face anchors, and constraint failures now share the same feature-diagnostic vocabulary in `core/diagnostics.ts`: owner, subject, reason, severity, and typed repair actions. Missing face hosts no longer fail silently, and all three mechanisms feed the same feature-tree warning state.
-4. **Finish the sketch tool set.** 🚧 Centre-point, three-point, and endpoint-driven tangent arcs now share the existing `ArcEntity`, solver, profile, and exact-kernel path. General trim ships: `sketcher/trim.ts` computes line/arc/circle crossings, decides which span a click asks to remove, and returns the surviving pieces, so sketch fillet (corner round) and offset are now "split at these parameters, then add geometry between the pieces" and no longer need new intersection maths. Line-to-line corner fillet follows from it and ships too. Construction geometry, offset, curve-to-curve fillets and the remaining entity-editing tools follow.
-5. **Manufacturing-aware Hole feature.** Now unblocked — build the next major vertical slice: simple, counterbored, countersunk, and threaded holes placed from sketch points or face coordinates; through-all and blind extents; standard sizes and thread metadata; exact boolean geometry; editable parameters; and automatic drawing callouts. This must preserve manufacturing intent in the document rather than behaving like a renamed subtractive cylinder.
-6. **Under-, fully-, and over-constrained visual states.** ✅ Sketch geometry is coloured by its live solver state, while selections and the specific geometry responsible for a constraint issue retain stronger highlight priority.
-7. **Performance fixtures.** ✅ A deterministic 250-step linear part benchmark measures document signatures and full operation-chain/cache-key construction without mixing WebAssembly startup into the result. Kernel-level reuse is guarded separately by a replayed-operation count in `evaluate-chain.test.ts`, which is exact and machine-independent where a wall-clock budget would be flaky.
-8. **Direct manipulation.** 🚧 Push/pull ships: dragging the end cap of a sweep
-   edits the owning extrusion's distance, live, as one undo step. It stays
-   parametric — the drag resolves to *which feature owns this face and what
-   number on it the face is*, then changes that number, so the history rebuilds
-   and the edit survives a reload. Draggable fillet-radius handles and on-model
-   dimension editing remain, as does dragging a side wall, which means editing
-   sketch geometry rather than a feature parameter.
+That has two consequences for everything below.
+
+- **Breadth is measured against real parts, not against desktop CAD.** A feature
+  earns its place by unblocking one of the acceptance parts. Assemblies, GD&T,
+  collaboration, accounts, and enterprise deployment (Milestones 5 and 7, and the
+  tolerancing half of Milestone 6) are parked, not abandoned. Nothing should be
+  built for them until every acceptance part passes.
+- **Guardrails come before features.** An agent cannot be trusted to notice that
+  it broke something the tests do not check. The real failure mode is not bad
+  code, it is plausible code that quietly breaks a saved project or a workflow
+  nobody exercised. Every phase therefore ends with an automated check, not a
+  claim.
+
+## Acceptance parts
+
+Four parts define "practical". Each is something worth printing, each is chosen
+to need a different set of missing capabilities, and together they cover the
+Milestone 3 acceptance criteria. They are the progress bar for this plan.
+
+Each part lives as a document built through the real feature history (not
+imported geometry) in `src/acceptance/`, and is checked through the real
+OpenCascade kernel the way `kernel/golden-parts.test.ts` checks its corpus. A
+part that cannot be built yet is a skipped test that names the capability it is
+waiting for, so `npm test` always reports how far there is to go.
+
+Every part is checked three ways:
+
+1. **Geometry.** Body count, bounding box to 0.01 mm, a closed and valid solid,
+   and a volume. Where the volume can be worked out by hand, assert the hand
+   value. Where it cannot, pin it once after the part has been inspected visually
+   and its STEP opened in another CAD tool, and record that it was done.
+2. **Intent survives an edit.** Change the named parameters listed for the part,
+   rebuild, and assert the geometry checks again with no unresolved references.
+   This is the topological-naming test that matters for real use.
+3. **Round trip.** Save, reload, and rebuild through `project-storage`, and get
+   the same geometry signature and the same exported STL triangle count.
+
+| # | Part | What it exercises | Edit test | Missing today |
+| --- | --- | --- | --- | --- |
+| A1 | **Screw-mount L-bracket.** 40 mm wide, legs of 50 and 30 mm, 4 mm thick, R4 inside corner, 1 mm chamfer on outside edges, two countersunk M4 holes per leg | Face sketches, extrude, fillet, chamfer, Hole, linear pattern | Thickness 4 → 6, hole count 2 → 3 per leg | Chamfer, Hole, linear pattern |
+| A2 | **Desk cable clip.** Screw-down base, a C-shaped Ø10 cable channel with 2 mm walls and a 7 mm snap opening, symmetric about a centreline, 15 mm deep, one countersunk hole in the base | Arcs, trim, sketch fillet, construction centreline, symmetric constraint, offset, mirror | Channel Ø10 → Ø14, wall 2 → 2.5 | Construction geometry, symmetric constraint, sketch offset, mirror |
+| A3 | **Electronics enclosure with lid.** 80 × 50 × 30 mm box, shelled to 2 mm with an open top, R3 vertical edges, four Ø6 standoffs with Ø4.2 heat-set insert holes in a rectangular pattern, a USB-C cutout in a side wall, and a separate lid body with a lip set by a `clearance = 0.2 mm` parameter and a pattern of vent slots | Shell, multiple bodies, rectangular pattern, side-face sketches, Hole, per-body export | Box 80 × 50 → 100 × 60, clearance 0.2 → 0.3 | Shell, multiple bodies, rectangular pattern, Hole, per-body export |
+| A4 | **Parametric knob.** A revolved body, a 6 mm D-shaft bore with the flat at 4.5 mm plus clearance, 24 grip grooves in a circular pattern, and a chamfered top edge | Revolve, construction axis, circular pattern, chamfer, formula-driven dimensions | Groove count 24 → 18, shaft 6 → 5 | Circular pattern, chamfer, construction axis |
+
+Three of these are the same parts as the template IDs started on the
+`codex/cad-print-templates` branch (`l-bracket`, `cable-guide`,
+`small-enclosure`). That is deliberate. A template is an acceptance part with
+its parameters exposed, so templates come after the parts can be built (Phase
+4), not before.
+
+## The plan — start here
+
+Work the phases in order. Inside a phase, work top to bottom unless an item
+says otherwise. Each item is sized to be one branch and one pull request. Mark
+an item ✅ here, in the same pull request that finishes it, and say what proves
+it.
+
+### Phase 0 — Stop the bleeding
+
+Small, urgent, and every one of these is a correctness or trust problem rather
+than a feature.
+
+- ⬜ **0.1 Every saved schema version must open.** The uncommitted lineage change
+  on `codex/cad-print-templates` raises `CURRENT_SCHEMA_VERSION` to 9, but
+  `MIGRATABLE_SCHEMA_VERSIONS` is written as `[1, …, 7, CURRENT_SCHEMA_VERSION]`,
+  so version 8 silently drops out of the list and every project saved today
+  would fail to open. All tests still pass, which is the real bug. Fix it on
+  `main`, independently of the template work:
+  - Write the list out literally, with no reference to `CURRENT_SCHEMA_VERSION`,
+    and add a test asserting it equals `1..CURRENT_SCHEMA_VERSION` with no gaps.
+  - Add `src/core/fixtures/schema-v{N}.parallax.json`, one real saved document
+    per historical version, and a test that every fixture opens, validates, and
+    rebuilds. A schema bump without a new fixture must fail the test.
+- ⬜ **0.2 Park the template lineage change.** Commit the WIP on
+  `codex/cad-print-templates` as-is so nothing is lost, and do not merge it.
+  Start Phase 0 and Phase 1 work from `main`. When Phase 4 picks templates up,
+  rebase the branch onto the 0.1 fix and keep the template IDs in one exported
+  `as const` array that both the type and the validator read.
+- ⬜ **0.3 Repo instructions for agents.** Add `AGENTS.md` at the repository root
+  (and a `CLAUDE.md` that imports it) covering only what an agent cannot infer:
+  - The definition of done: `npm run lint`, `npm test`, `npm run build`, and,
+    once Phase 1 lands, `npm run test:e2e`.
+  - The schema-change checklist from 0.1.
+  - Geometry logic goes in pure modules with tests, never in React or Three.js
+    components.
+  - From Phase 2 onwards, no new sketch tools on the SVG sketch surface.
+  - Update this roadmap in the same pull request, using the rules at the end of
+    this file.
+  - Anything that surprised you about OpenCascade or PlaneGCS goes into the
+    kernel behaviour notes.
+- ⬜ **0.4 Correct the record.** Offline PWA packaging shipped in September but
+  is still marked ⬜. The refactor notes say schema v7. The "browser-level
+  interaction tests" refactor item is marked ✅, but those tests run in jsdom
+  without WebGL. `portfolio.json` binds the dev service to `127.0.0.1`. Fix each
+  one, and update the README "Current limitations" so it matches.
+
+**Exit:** a v8 project from today's `main` opens on a build with a v9 schema
+bump, there is a test that proves it, and `AGENTS.md` exists.
+
+### Phase 1 — Guardrails for agent-driven work
+
+Today nothing drives the actual application in a real browser: the three
+Playwright tests check serving and offline reload. The modelling loop is only
+tested piecewise in jsdom, which has no WebGL, so the viewport, picking, and
+the main-thread ↔ worker plumbing as a whole are unverified.
+
+- ⬜ **1.1 A real-browser modelling test.** Add `e2e/modeling.spec.ts`, run
+  against the production build in Chromium with software WebGL. It creates a
+  project, draws a rectangle on XY, dimensions it, extrudes it, waits for the
+  exact mesh, exports STEP and STL, and checks the downloads. Then it reloads and
+  confirms the part is still there.
+  - Drive it through the UI with stable `data-testid` hooks (the app has one
+    today).
+  - For assertions only, expose a read-only test handle — the current document
+    and kernel status — when the build is in test mode. Never use it to perform
+    actions; that would test the handle, not the app.
+- ⬜ **1.2 Acceptance-part harness.** Create `src/acceptance/` with a builder per
+  part (A1–A4), assembled from document commands the same way the UI assembles
+  them, plus the three checks described in "Acceptance parts". Every part whose
+  capabilities are missing is a skipped test naming them.
+  - Before the harness lands, build the parts of A1 that are possible today —
+    plate, legs, inside fillet — as a non-skipped partial, to prove the harness
+    works.
+- ⬜ **1.3 Run both in CI.** Add the modelling spec to the `chromium` Playwright
+  project, and print a line of acceptance-part progress ("A1 ⬜ chamfer, hole,
+  pattern …") in the CI summary.
+
+**Exit:** deleting a line from the extrude or export path fails a test that runs
+in CI, and the acceptance progress bar is visible on every pull request.
+
+### Phase 2 — Sketch in the 3D viewport
+
+This was item 0 of the previous "start here" list, and it stays first among
+features. The SVG sketcher replaces the 3D view while you draw. That caps how
+the whole application feels, and it blocks projected edges, datum planes, and
+in-context sketching. Every sketch tool added before the move is written twice,
+which is why sketch-tool work is frozen until this phase ends.
+
+The two largest files are exactly the two that change, so they get split first.
+Then the move is a render-surface swap instead of a rewrite.
+
+- ⬜ **2.1 Pull the sketch tools out of `SketchEditor.tsx` (1,445 lines).** Tool
+  state, pointer handling, and edits become a pure reducer: it takes pointer
+  events in sketch coordinates and returns edits plus preview geometry. Test the
+  reducer directly. The SVG surface becomes a thin renderer of the reducer's
+  output. Behaviour must not change; the Phase 1 e2e test is the proof.
+- ⬜ **2.2 Split `SceneViewport.tsx` (1,394 lines).** Separate picking, the
+  measure overlay, push/pull, and face selection into units that receive the
+  `ViewportController` rather than reaching through component state. Same proof
+  as 2.1.
+- ⬜ **2.3 Render the sketch in the 3D scene.**
+  - Draw the sketch plane and its entities in Three.js on top of the ghosted
+    model, and align the camera to the plane on entry.
+  - Turn pointer input into sketch coordinates by raycasting onto the plane.
+    This replaces the `sketch-view` transform; the reducer from 2.1 does not
+    change.
+  - Keep the SVG surface behind a setting until 2.4.
+- ⬜ **2.4 Parity, then delete the SVG surface.** Before deleting, every
+  existing tool, snap, constraint, and dimension edit must work on the 3D
+  surface, and the e2e test must pass there. A short manual checklist goes in
+  the pull request.
+- ⬜ **2.5 Project edges into a sketch.** Now cheap: clicking a model edge while
+  sketching adds it as reference geometry, anchored with the existing edge
+  provenance. This also feeds A3, where the cutout is placed from the wall's
+  edges.
+
+**Exit:** the model stays visible while sketching, the SVG sketcher is gone, and
+both large files are below 600 lines.
+
+### Phase 3 — The features the acceptance parts need
+
+Ordered by how many acceptance parts each one unlocks, then by size. Each item
+is done when the acceptance tests it was blocking stop being skipped. It must
+also come with a document schema change that follows the 0.1 checklist, where
+it needs one.
+
+- ⬜ **3.1 Construction geometry and centrelines** (A2, A4). A flag on any sketch
+  entity: solved, never part of a profile, and drawn dashed. Centrelines become
+  the mirror line for symmetric constraints and the axis for revolves.
+- ⬜ **3.2 Midpoint, symmetric, and point-on-object constraints** (A2, and
+  generally needed to fully constrain anything).
+- ⬜ **3.3 Chamfer** (A1, A4). Equal-distance, then distance-and-angle. Reuse the
+  fillet's edge anchors, limit search, and repair action wholesale; a chamfer is
+  the same feature with a different blend.
+- ⬜ **3.4 Hole feature** (A1, A2, A3). The existing roadmap item, scoped for
+  printing:
+  - Simple, counterbored, and countersunk holes; blind and through-all.
+  - Placed from sketch points.
+  - Sizes from a table with print-relevant presets: M2–M5 clearance holes and
+    heat-set insert bores.
+  - Exact boolean geometry, and intent kept in the document so the drawing
+    callouts read it rather than inferring it.
+  - Threads stay as metadata only.
+- ⬜ **3.5 Patterns and mirror** (A1, A2, A3, A4). Linear, rectangular, and
+  circular patterns of features, and mirror across a plane or centreline.
+  Instances are generated in the operation chain, not copied into the document,
+  so the count stays a single editable parameter.
+- ⬜ **3.6 Sketch offset** (A2). Built on the splitting maths `trim.ts` already
+  provides, as the earlier roadmap noted.
+- ⬜ **3.7 Shell** (A3). Pick the faces to remove, set the wall thickness, and
+  report the thickness that would work when OpenCascade refuses — the same
+  repair pattern as an oversized fillet.
+- ⬜ **3.8 Multiple bodies** (A3). New-body extrudes and revolves start a new body
+  instead of replacing the current one. Bodies get a list in the feature tree,
+  and each later feature targets a body. This turns the linear single-body
+  operation chain into one chain per body, so plan it with
+  `kernel/evaluate-chain.ts` and its prefix cache in mind. It is the riskiest
+  item in the phase.
+- ⬜ **3.9 Exact primitives or none.** Boxes, cylinders, and spheres are still
+  mesh previews, which breaks "never label mesh-only geometry as exact".
+  Rebuild them as exact features (Replicad makes this small), or remove them.
+  Either way, nothing in the viewport is mesh-only.
+- ⬜ **3.10 Suppress and roll back.** Suppress a feature, or drag a rollback bar
+  above it, and rebuild without it. Reorder waits until dependency tracking
+  exists. This is the first tool used for debugging a broken part.
+
+**Exit:** all four acceptance parts pass all three checks.
+
+### Phase 4 — Printing output and templates
+
+- ⬜ **4.1 3MF export.** It carries units and multiple bodies, which STL cannot,
+  so the enclosure and its lid go to the slicer as one file. Keep STL.
+- ⬜ **4.2 Per-body export.** Export the selected body, or each body as its own
+  file.
+- ⬜ **4.3 Templates.** Rebase the parked lineage branch (0.2). The three starter
+  templates are A1, A2, and A3, with their edit-test parameters exposed as the
+  template's dimensions, so every template is already covered by the acceptance
+  tests.
+- 🔬 **4.4 Printability hints.** Overhang shading against a chosen build
+  direction, and a warning for walls thinner than a nozzle setting. Only after
+  4.1–4.3, and only if real prints show it would have helped.
+
+### Phase 5 — Robustness under real use
+
+Pull an item forward the moment an acceptance edit test needs it.
+
+- ⬜ **5.1 Anchors for every referenced face and edge.** Hole placement faces,
+  pattern seeds, and shell faces all need the provenance approach that fillet
+  edges and face-attached sketches already use.
+- ⬜ **5.2 Dependency-aware recompute.** Skip unaffected features in the middle
+  of a history (Milestone 4).
+- ⬜ **5.3 Command-level undo.** Undo by named action rather than whole-document
+  snapshots, so undo history stays cheap as documents grow.
+- ⬜ **5.4 Feature reorder,** once 5.2 can tell what depends on what.
+
+### Carried over from the previous list
+
+- Direct manipulation (push/pull ships; fillet-radius handles and on-model
+  dimensions remain) continues after Phase 2. The 3D sketch surface is what
+  makes on-model dimension editing natural.
+- Curve-to-curve sketch fillets and the remaining entity-editing tools wait for
+  Phase 2, like every sketch tool.
+- Repair actions, the shared tolerance policy, unified broken-reference
+  diagnostics, constraint-state colouring, and performance fixtures are done.
+  Their history is in git.
 
 ## Milestone 0 — Browser CAD foundation
 
@@ -230,7 +463,7 @@ Status: ⬜ Planned
 
 ## Milestone 5 — Assemblies
 
-Status: ⬜ Planned
+Status: ⏸ Parked until every acceptance part passes (see Scope)
 
 - ⬜ Part and assembly documents
 - ⬜ Component insertion and instances
@@ -273,7 +506,7 @@ is blocked on before an annotation can survive a recompute.
 
 ## Milestone 7 — Professional product platform
 
-Status: ⬜ Planned
+Status: ⏸ Parked until every acceptance part passes (see Scope)
 
 - ⬜ Optional accounts without weakening local-first use
 - ⬜ Encrypted cloud storage and version history
