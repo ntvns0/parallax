@@ -39,7 +39,7 @@ type EdgeAnchorBase = {
   sketchId: string
   entityId: string
   /**
-   * The extrusion that swept the edge.
+   * The extrusion or revolve that swept the edge.
    *
    * Optional because anchors written before this existed did not record it, and
    * those fall back to the first extrusion built from the sketch — which is the
@@ -61,6 +61,12 @@ export type EdgeAnchor =
       /** Where on the entity the corner sits, 0..1 along the curve. */
       t: number
     })
+  /** A circle, or an arc for a partial revolve, swept round the axis by one end of an entity. Added in schema 9. */
+  | (EdgeAnchorBase & {
+      kind: 'profileRevolve'
+      /** Which end of the entity: 0 its start, 1 its end. */
+      end: 0 | 1
+    })
 
 /** A geometric edge fingerprint recorded from the exact viewport mesh. */
 export type FilletEdgeReference = {
@@ -79,9 +85,14 @@ export type FilletEdgeReference = {
 
 export type FilletCornerStyle = 'spherical' | 'mitered'
 export type FilletProfileShape = 'rational' | 'quasiAngular' | 'polynomial'
+/** How an edge is broken: rounded, or cut off flat at an equal distance along both faces. */
+export type FilletBlend = 'round' | 'chamfer'
 
 export type FilletParameters = {
+  /** The fillet radius, or for a chamfer the distance cut back along each face. */
   radius: number
+  /** Absent means round. Added in schema 9. */
+  blend?: FilletBlend
   radius2?: number
   cornerStyle?: FilletCornerStyle
   filletShape?: FilletProfileShape
@@ -420,14 +431,15 @@ export function createFilletFeature(
   edges: FilletEdgeReference[],
   index: number,
   radius = 2,
-  options?: { cornerStyle?: FilletCornerStyle; filletShape?: FilletProfileShape; radius2?: number },
+  options?: { cornerStyle?: FilletCornerStyle; filletShape?: FilletProfileShape; radius2?: number; blend?: FilletBlend },
 ): FilletFeature {
   return {
     id: createId(),
     kind: 'fillet',
-    name: `Fillet ${index}`,
+    name: `${options?.blend === 'chamfer' ? 'Chamfer' : 'Fillet'} ${index}`,
     parameters: {
       radius,
+      ...(options?.blend === 'chamfer' ? { blend: 'chamfer' as const } : {}),
       ...(options?.radius2 !== undefined ? { radius2: options.radius2 } : {}),
       cornerStyle: options?.cornerStyle ?? 'spherical',
       filletShape: options?.filletShape ?? 'rational',

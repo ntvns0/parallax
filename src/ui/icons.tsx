@@ -1,4 +1,5 @@
 import type { SVGProps } from 'react'
+import type { Feature } from '../core/model'
 
 export function BoxFeatureIcon(props: SVGProps<SVGSVGElement>) {
   return (
@@ -57,6 +58,16 @@ export function FilletFeatureIcon(props: SVGProps<SVGSVGElement>) {
   )
 }
 
+export function ChamferFeatureIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" {...props}>
+      <path d="M5 19v-7l6-6h7" />
+      <path d="M5 12V6h6" strokeDasharray="2 2" />
+      <path d="m15.2 3.2 2.8 2.8-2.8 2.8" />
+    </svg>
+  )
+}
+
 export function RevolveFeatureIcon(props: SVGProps<SVGSVGElement>) {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" {...props}>
@@ -65,4 +76,20 @@ export function RevolveFeatureIcon(props: SVGProps<SVGSVGElement>) {
       <path d="M20 12v3M20 7v2" strokeDasharray="2 2" />
     </svg>
   )
+}
+
+const KIND_ICONS = {
+  box: BoxFeatureIcon,
+  cylinder: CylinderFeatureIcon,
+  sphere: SphereFeatureIcon,
+  sketch: SketchFeatureIcon,
+  extrude: ExtrudeFeatureIcon,
+  revolve: RevolveFeatureIcon,
+  fillet: FilletFeatureIcon,
+} satisfies Record<Feature['kind'], typeof BoxFeatureIcon>
+
+/** The icon for a feature: its kind's, except that a chamfer is not drawn as a fillet. */
+export function FeatureIcon({ feature, ...props }: { feature: Feature } & SVGProps<SVGSVGElement>) {
+  const Icon = feature.kind === 'fillet' && feature.parameters.blend === 'chamfer' ? ChamferFeatureIcon : KIND_ICONS[feature.kind] ?? BoxFeatureIcon
+  return <Icon {...props} />
 }

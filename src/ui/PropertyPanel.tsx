@@ -11,17 +11,7 @@ import { resolveParameterTable } from '../core/parameters'
 import { isFaceAttached } from '../core/extrude-direction'
 import { exportExactStep, exportExactStl } from '../kernel/exact-kernel'
 import { applySketchResize } from '../sketcher/sketch-edits'
-import { BoxFeatureIcon, CylinderFeatureIcon, ExtrudeFeatureIcon, FilletFeatureIcon, RevolveFeatureIcon, SketchFeatureIcon, SphereFeatureIcon } from './icons'
-
-const featureIcons: Record<string, typeof BoxFeatureIcon> = {
-  box: BoxFeatureIcon,
-  cylinder: CylinderFeatureIcon,
-  sphere: SphereFeatureIcon,
-  sketch: SketchFeatureIcon,
-  extrude: ExtrudeFeatureIcon,
-  revolve: RevolveFeatureIcon,
-  fillet: FilletFeatureIcon,
-}
+import { ExtrudeFeatureIcon, FeatureIcon, RevolveFeatureIcon, SketchFeatureIcon } from './icons'
 
 /** The evaluated parameter table, for checking a formula as it is typed. */
 function useParameterScope() {
@@ -115,11 +105,10 @@ function NumberField({ label, value, minAbs, onCommit, binding, formula }: {
 }
 
 function PropertyIdentity({ feature }: { feature: Feature }) {
-  const Icon = featureIcons[feature.kind] ?? BoxFeatureIcon
   return (
     <>
       <div className="property-section identity-section">
-        <div className="feature-badge"><Icon /></div>
+        <div className="feature-badge"><FeatureIcon feature={feature} /></div>
         <div><span>{feature.kind.toUpperCase()} FEATURE</span><input value={feature.name} onChange={(event) => useDocumentStore.getState().updateFeature(feature.id, { name: event.target.value })} /></div>
       </div>
       <FormulaWarning feature={feature} />
@@ -328,9 +317,10 @@ function FilletProperties({ feature, onReselectEdges }: { feature: Extract<Featu
   const warning = useFeatureDiagnosticsStore((state) => state.unresolved[feature.id])
   const radiusRepair = warning && findDiagnosticRepair(warning, 'apply-radius')
   const edgeRepair = warning && findDiagnosticRepair(warning, 'reselect-edge')
+  const chamfer = feature.parameters.blend === 'chamfer'
   return (
     <aside className="panel properties-panel">
-      <div className="panel-header"><span>FILLET</span><button aria-label="Close properties" onClick={() => useDocumentStore.getState().select(null)}>×</button></div>
+      <div className="panel-header"><span>{chamfer ? 'CHAMFER' : 'FILLET'}</span><button aria-label="Close properties" onClick={() => useDocumentStore.getState().select(null)}>×</button></div>
       <PropertyIdentity feature={feature} />
       {warning && <div className="dependency-warning">
         <span>{warning.message}</span>
@@ -346,9 +336,10 @@ function FilletProperties({ feature, onReselectEdges }: { feature: Extract<Featu
       <div className="property-section">
         <h3>Selected edges</h3>
         <strong className="fillet-edge-count">{feature.edges.length} edge{feature.edges.length === 1 ? '' : 's'} selected</strong>
-        <NumberField label="Radius" value={feature.parameters.radius} minAbs={0.001} binding={{ featureId: feature.id, key: 'radius' }} formula={feature.formulas?.radius} onCommit={(value) => updateParameters(feature.id, { radius: value })} />
+        <NumberField label={chamfer ? 'Distance' : 'Radius'} value={feature.parameters.radius} minAbs={0.001} binding={{ featureId: feature.id, key: 'radius' }} formula={feature.formulas?.radius} onCommit={(value) => updateParameters(feature.id, { radius: value })} />
       </div>
-      <div className="property-section">
+      {/* A chamfer is a flat cut: it has no corner blend or profile to choose. */}
+      {!chamfer && <div className="property-section">
         <h3>Corner Options</h3>
         <label className="select-field">
           <span>Corner Style</span>
@@ -371,12 +362,12 @@ function FilletProperties({ feature, onReselectEdges }: { feature: Extract<Featu
             <option value="polynomial">Polynomial</option>
           </select>
         </label>
-      </div>
+      </div>}
       <div className="property-section feature-info">
-        <span>Target</span><strong>{feature.parameters.cornerStyle === 'mitered' ? 'Mitered edges' : 'Connected corner chain'}</strong>
+        <span>Target</span><strong>{chamfer ? 'Selected edges' : feature.parameters.cornerStyle === 'mitered' ? 'Mitered edges' : 'Connected corner chain'}</strong>
         <span>Kernel</span><strong>OpenCascade B-rep</strong>
       </div>
-      <button className="delete-feature" onClick={() => useDocumentStore.getState().removeSelected()}><Trash2 size={14} /> Delete fillet</button>
+      <button className="delete-feature" onClick={() => useDocumentStore.getState().removeSelected()}><Trash2 size={14} /> Delete {chamfer ? 'chamfer' : 'fillet'}</button>
     </aside>
   )
 }

@@ -30,6 +30,7 @@ export function buildOperationChain(feature: Extract<Feature, { kind: 'extrude' 
         featureId: candidate.id,
         featureName: candidate.name,
         radius: candidate.parameters.radius,
+        blend: candidate.parameters.blend ?? 'round',
         ...(candidate.parameters.radius2 !== undefined ? { radius2: candidate.parameters.radius2 } : {}),
         cornerStyle: candidate.parameters.cornerStyle ?? 'spherical',
         filletShape: candidate.parameters.filletShape ?? 'rational',

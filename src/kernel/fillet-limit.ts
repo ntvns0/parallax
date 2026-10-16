@@ -53,14 +53,16 @@ export function describeOversizedFillet(
   radius: number,
   scale: number,
   groupSize: number,
+  blend: 'round' | 'chamfer' = 'round',
 ): string {
-  const together = groupSize > 1 ? ' with the other fillets it meets' : ''
+  const [noun, size] = blend === 'chamfer' ? ['chamfer', 'distance'] : ['fillet', 'radius']
+  const together = groupSize > 1 ? ` with the other ${noun}s it meets` : ''
   if (scale < FILLET_SCALE_TOLERANCE * 2) {
-    return `${featureName} could not be built at any radius${together}. The selected edges probably do not all meet at a corner — select every sharp edge that meets there together, or remove this fillet.`
+    return `${featureName} could not be built at any ${size}${together}. The selected edges probably do not all meet at a corner — select every sharp edge that meets there together, or remove this ${noun}.`
   }
   const limit = radius * scale
   const rounded = limit >= 1 ? limit.toFixed(2) : limit.toFixed(3)
-  return `${featureName} is too large for the geometry it sits on${together}: a ${formatMillimetres(radius)} mm radius leaves no room for the blend. The largest that works here is about ${rounded} mm.`
+  return `${featureName} is too large for the geometry it sits on${together}: a ${formatMillimetres(radius)} mm ${size} leaves no room for the ${blend === 'chamfer' ? 'cut' : 'blend'}. The largest that works here is about ${rounded} mm.`
 }
 
 function formatMillimetres(value: number): string {

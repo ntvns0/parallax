@@ -190,3 +190,61 @@ describe('two extrusions from one sketch', () => {
     expect(resolveEdgeAnchor(legacy, features)?.start[2]).toBeCloseTo(14, 9)
   })
 })
+
+/**
+ * A disc revolved about a centreline up its inside edge: radius 15, height 12,
+ * on XZ, so the axis is world Z and the top rim is a circle at z = 12.
+ */
+function discDocument(radius = 15, angle = 360): Feature[] {
+  const corners: Vec2[] = [[0, 0], [radius, 0], [radius, 12], [0, 12]]
+  return [
+    {
+      id: 'section', kind: 'sketch', name: 'Section', plane: 'XZ', parameters: { planeOffset: 0 },
+      entities: [
+        ...corners.map((corner, index) => ({ id: `side-${index}`, type: 'line', start: corner, end: corners[(index + 1) % 4], construction: false })),
+        { id: 'axis', type: 'line', start: [0, 0], end: [0, 20], construction: true },
+      ],
+      constraints: [], position: [0, 0, 0], rotation: [0, 0, 0], visible: true,
+    },
+    {
+      id: 'disc', kind: 'revolve', name: 'Disc', sketchId: 'section', operation: 'newBody', axisEntityId: 'axis',
+      parameters: { angle, axis: 'Y' }, position: [0, 0, 0], rotation: [0, 0, 0], visible: true,
+    },
+  ] as Feature[]
+}
+
+/** The top rim as the viewport picks it: a closed loop starting at its seam, with a point opposite. */
+const topRim: FilletEdgeReference = { start: [15, 0, 12], end: [15, 0, 12], point: [-15, 0, 12] }
+
+describe('edges swept round a revolve axis', () => {
+  it('names the rim by the profile corner that swept it', () => {
+    expect(deriveEdgeAnchor(topRim, discDocument())).toEqual({
+      kind: 'profileRevolve', sketchId: 'section', entityId: 'side-1', featureId: 'disc', end: 1,
+    })
+  })
+
+  it('accepts a pick point on a tessellation chord, not exactly on the circle', () => {
+    expect(deriveEdgeAnchor({ ...topRim, point: [-14.95, 0.4, 12] }, discDocument())).toMatchObject({ kind: 'profileRevolve' })
+  })
+
+  it('leaves alone a corner on the axis, which sweeps no edge', () => {
+    expect(deriveEdgeAnchor({ start: [0, 0, 12], end: [0, 0, 12], point: [0, 0, 12] }, discDocument())).toBeUndefined()
+  })
+
+  it('follows the rim out when the disc grows', () => {
+    const [anchored] = anchorEdgeReferences([topRim], discDocument())
+    const moved = currentEdgeReference(anchored, discDocument(20))
+    expect(moved.start).toEqual([20, -0, 12])
+    expect(moved.end.map((value) => Math.round(value * 1e9) / 1e9 + 0)).toEqual([20, 0, 12])
+    expect(moved.point.map((value) => Math.round(value * 1e9) / 1e9 + 0)).toEqual([-20, 0, 12])
+  })
+
+  it('ends a partial revolve where the turn ends, with its middle halfway round', () => {
+    const anchor = deriveEdgeAnchor(topRim, discDocument())!
+    const quarter = resolveEdgeAnchor(anchor, discDocument(15, 90))!
+    // Turning about +Z by the right-hand rule carries +X toward +Y.
+    expect(quarter.end.map((value) => Math.round(value * 1e9) / 1e9 + 0)).toEqual([0, 15, 12])
+    expect(quarter.point[0]).toBeCloseTo(15 / Math.SQRT2, 9)
+    expect(quarter.point[1]).toBeCloseTo(15 / Math.SQRT2, 9)
+  })
+})

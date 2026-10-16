@@ -37,11 +37,10 @@ function constraintSignature(constraint: SketchConstraint): string {
 }
 
 function edgeSignature(edge: FilletEdgeReference): string {
-  const anchor = edge.anchor
-    ? edge.anchor.kind === 'profileSweep'
-      ? `sweep:${edge.anchor.sketchId}:${edge.anchor.entityId}:${edge.anchor.depth}`
-      : `lateral:${edge.anchor.sketchId}:${edge.anchor.entityId}:${edge.anchor.t}`
-    : ''
+  const anchor = !edge.anchor ? ''
+    : edge.anchor.kind === 'profileSweep' ? `sweep:${edge.anchor.sketchId}:${edge.anchor.entityId}:${edge.anchor.depth}`
+      : edge.anchor.kind === 'profileRevolve' ? `revolve:${edge.anchor.sketchId}:${edge.anchor.entityId}:${edge.anchor.end}`
+        : `lateral:${edge.anchor.sketchId}:${edge.anchor.entityId}:${edge.anchor.t}`
   return `${numbers(edge.point)}|${numbers(edge.start)}|${numbers(edge.end)}|${anchor}`
 }
 

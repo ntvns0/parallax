@@ -86,8 +86,8 @@ export function applyFilletGroup(shape: Shape3D, operations: KernelFilletOperati
     severity: 'warning' as const,
     code: 'oversized-fillet' as const,
     reason: 'limit-exceeded' as const,
-    subject: { kind: 'parameter' as const, label: 'Fillet radius' },
-    message: describeOversizedFillet(operation.featureName, operation.radius, usable, applicable.length),
+    subject: { kind: 'parameter' as const, label: operation.blend === 'chamfer' ? 'Chamfer distance' : 'Fillet radius' },
+    message: describeOversizedFillet(operation.featureName, operation.radius, usable, applicable.length, operation.blend),
     repairs: usable >= FILLET_SCALE_TOLERANCE * 2
       ? [{ kind: 'apply-radius' as const, label: 'Apply suggested radius', value: recommendedRadius(operation.radius, usable) }]
       : [{ kind: 'reselect-edge' as const, label: 'Reselect edges' }],
@@ -111,16 +111,19 @@ function recommendedRadius(radius: number, scale: number): number {
  * together is the same design, smaller.
  */
 function filletAttempt(shape: Shape3D, applicable: KernelFilletOperation[]) {
+  const size = (edge: Shape3D['edges'][number], scale: number) => {
+    // A later feature wins if the same source edge was deliberately selected
+    // more than once with a different size.
+    for (let index = applicable.length - 1; index >= 0; index -= 1) {
+      if (selectedEdge(edge, applicable[index].edges, true)) return applicable[index].radius * scale
+    }
+    return null
+  }
+  // A run is all rounds or all chamfers; the evaluator never mixes them.
+  const chamfer = applicable[0].blend === 'chamfer'
   return (scale: number): Shape3D | null => {
     try {
-      return shape.fillet((edge) => {
-        // A later feature wins if the same source edge was deliberately
-        // selected more than once with a different radius.
-        for (let index = applicable.length - 1; index >= 0; index -= 1) {
-          if (selectedEdge(edge, applicable[index].edges, true)) return applicable[index].radius * scale
-        }
-        return null
-      })
+      return chamfer ? shape.chamfer((edge) => size(edge, scale)) : shape.fillet((edge) => size(edge, scale))
     } catch {
       return null
     }

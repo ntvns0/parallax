@@ -1,19 +1,8 @@
 import { ChevronDown, Eye, EyeOff } from 'lucide-react'
 import { useDocumentStore } from '../core/document-store'
 import { collectDocumentDiagnostics, useFeatureDiagnosticsStore } from '../core/diagnostics'
-import type { FeatureKind } from '../core/model'
-import { BoxFeatureIcon, CylinderFeatureIcon, ExtrudeFeatureIcon, FilletFeatureIcon, RevolveFeatureIcon, SketchFeatureIcon, SphereFeatureIcon } from './icons'
+import { FeatureIcon } from './icons'
 import { ParametersSection } from './ParametersPanel'
-
-const featureIcons: Record<FeatureKind, typeof BoxFeatureIcon> = {
-  box: BoxFeatureIcon,
-  cylinder: CylinderFeatureIcon,
-  sphere: SphereFeatureIcon,
-  sketch: SketchFeatureIcon,
-  extrude: ExtrudeFeatureIcon,
-  revolve: RevolveFeatureIcon,
-  fillet: FilletFeatureIcon,
-}
 
 export function FeaturePanel({ onMenu }: { onMenu: () => void }) {
   const features = useDocumentStore((state) => state.document.features)
@@ -32,7 +21,6 @@ export function FeaturePanel({ onMenu }: { onMenu: () => void }) {
       </div>
       <div className="feature-list">
         {features.map((feature) => {
-          const Icon = featureIcons[feature.kind]
           const warning = unresolved[feature.id] ?? documentDiagnostics[feature.id] ?? formulaDiagnostics[feature.id]
           return (
             <div
@@ -40,7 +28,7 @@ export function FeaturePanel({ onMenu }: { onMenu: () => void }) {
               className={`feature-row${feature.id === selectedId ? ' selected' : ''}${warning ? ' unresolved' : ''}`}
             >
               <button className="feature-select" onClick={() => useDocumentStore.getState().select(feature.id)} onDoubleClick={() => { if (feature.kind === 'sketch') useDocumentStore.getState().beginSketch(feature.id) }}>
-                <Icon /><span>{feature.name}</span>
+                <FeatureIcon feature={feature} /><span>{feature.name}</span>
                 {warning && <span className="feature-warning" role="img" aria-label={`${feature.name} needs attention`} title={warning.message}>!</span>}
               </button>
               <button

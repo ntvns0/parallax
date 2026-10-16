@@ -1,4 +1,4 @@
-import type { FilletEdgeReference, FilletCornerStyle } from '../core/model'
+import type { FilletBlend, FilletEdgeReference, FilletCornerStyle } from '../core/model'
 import type { MeasurementState } from '../core/measurement'
 import type { SketchFacePickResult } from '../viewport/SceneViewport'
 
@@ -10,6 +10,8 @@ export type InteractionMode =
       kind: 'fillet-selection'
       targetId: string
       editingFeatureId?: string
+      /** Whether the edges will be rounded or cut flat. */
+      blend: FilletBlend
       edges: FilletEdgeReference[]
       propagate: boolean
       cornerStyle: FilletCornerStyle
@@ -25,7 +27,7 @@ export type InteractionAction =
   | { type: 'OPEN_PLANE_PICKER' }
   | { type: 'START_FACE_PICKER' }
   | { type: 'SET_FACE_HOVER'; hover: SketchFacePickResult | null }
-  | { type: 'START_FILLET'; targetId: string; initialRadiusDraft: string; initialCornerStyle?: FilletCornerStyle; editingFeatureId?: string }
+  | { type: 'START_FILLET'; targetId: string; initialRadiusDraft: string; initialCornerStyle?: FilletCornerStyle; editingFeatureId?: string; blend?: FilletBlend }
   | { type: 'SET_FILLET_EDGES'; edges: FilletEdgeReference[] }
   | { type: 'ADD_FILLET_EDGES'; edgesToAdd: FilletEdgeReference[] }
   | { type: 'TOGGLE_FILLET_EDGES'; edgesToToggle: FilletEdgeReference[] }
@@ -56,6 +58,7 @@ export function interactionModeReducer(state: InteractionMode, action: Interacti
         kind: 'fillet-selection',
         targetId: action.targetId,
         ...(action.editingFeatureId ? { editingFeatureId: action.editingFeatureId } : {}),
+        blend: action.blend ?? 'round',
         edges: [],
         propagate: true,
         cornerStyle: action.initialCornerStyle ?? 'spherical',

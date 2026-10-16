@@ -37,3 +37,28 @@ export function revolveAxis(revolve: Pick<RevolveFeature, 'axisEntityId' | 'para
   const ahead = sketchPointToWorld(sketch.plane, [axis.origin[0] + axis.direction[0], axis.origin[1] + axis.direction[1]], planeOffset)
   return { origin, direction: [ahead[0] - origin[0], ahead[1] - origin[1], ahead[2] - origin[2]] }
 }
+
+/**
+ * Where a point sits relative to an axis: how far along it, and how far out.
+ * Every point a revolve sweeps from one profile point shares both numbers.
+ */
+export function axialPosition(axis: RevolveAxis, point: Vec3): { along: number; radius: number } {
+  const offset = [point[0] - axis.origin[0], point[1] - axis.origin[1], point[2] - axis.origin[2]]
+  const along = offset[0] * axis.direction[0] + offset[1] * axis.direction[1] + offset[2] * axis.direction[2]
+  const radial = offset.map((value, index) => value - axis.direction[index] * along)
+  return { along, radius: Math.hypot(...radial) }
+}
+
+/** A point turned about an axis by `degrees`, counter-clockwise looking down the axis toward its origin. */
+export function rotateAboutAxis(point: Vec3, axis: RevolveAxis, degrees: number): Vec3 {
+  const angle = degrees * Math.PI / 180
+  const [kx, ky, kz] = axis.direction
+  const [vx, vy, vz] = [point[0] - axis.origin[0], point[1] - axis.origin[1], point[2] - axis.origin[2]]
+  const cos = Math.cos(angle)
+  const sin = Math.sin(angle)
+  const dot = kx * vx + ky * vy + kz * vz
+  // Rodrigues: v cosθ + (k × v) sinθ + k (k·v)(1 − cosθ).
+  const cross = [ky * vz - kz * vy, kz * vx - kx * vz, kx * vy - ky * vx]
+  const turned = [vx, vy, vz].map((value, index) => value * cos + cross[index] * sin + axis.direction[index] * dot * (1 - cos))
+  return [turned[0] + axis.origin[0], turned[1] + axis.origin[1], turned[2] + axis.origin[2]]
+}

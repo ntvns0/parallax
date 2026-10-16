@@ -18,6 +18,7 @@ import {
   type SketchFaceAttachment,
   type SketchPlane,
   type Vec3,
+  type FilletBlend,
   type FilletCornerStyle,
   type FilletProfileShape,
   type DocumentParameter,
@@ -127,10 +128,13 @@ export function prepareFilletFeature(
   edges: FilletEdgeReference[],
   radius: number,
   features: Feature[],
-  options?: { cornerStyle?: FilletCornerStyle; filletShape?: FilletProfileShape; radius2?: number },
+  options?: { cornerStyle?: FilletCornerStyle; filletShape?: FilletProfileShape; radius2?: number; blend?: FilletBlend },
 ) {
   const anchored = anchorEdgeReferences(edges, features)
-  return createFilletFeature(anchored, features.filter((item) => item.kind === 'fillet').length + 1, radius, options)
+  const blend = options?.blend ?? 'round'
+  // Fillets and chamfers are numbered separately, as their names are.
+  const sameBlend = features.filter((item) => item.kind === 'fillet' && (item.parameters.blend ?? 'round') === blend)
+  return createFilletFeature(anchored, sameBlend.length + 1, radius, options)
 }
 
 function storageFailure(error: unknown) {

@@ -18,6 +18,7 @@ import {
   type Vec2,
 } from '../core/model'
 import { normalizeArc } from '../core/arc-geometry'
+import { anchorEdgeReferences } from '../core/edge-anchor'
 import { buildOperationChain } from './operation-chain'
 import { evaluateOperations } from './evaluate-chain'
 import { edgeGeometry } from './fillet-apply'
@@ -146,6 +147,29 @@ function verticalEdgeReferences(features: Feature[]): FilletEdgeReference[] {
     .filter((geometry) => Math.abs(geometry.start[2] - geometry.end[2]) > 1e-6
       && Math.hypot(geometry.start[0] - geometry.end[0], geometry.start[1] - geometry.end[1]) < 1e-6)
     .map((geometry) => ({ point: geometry.middle, start: geometry.start, end: geometry.end })))
+}
+
+/** The edge a revolve sweeps from a profile corner at radius `radius`, height `height` along +Y. */
+function rimReference(features: Feature[], radius: number, height: number): FilletEdgeReference {
+  return withSolid(features, (shape) => {
+    const found = shape.edges.map((edge) => edgeGeometry(edge)).find((geometry) =>
+      [geometry.start, geometry.middle].every((point) =>
+        Math.abs(point[1] - height) < 1e-6 && Math.abs(Math.hypot(point[0], point[2]) - radius) < 1e-6))
+    if (!found) throw new Error(`No rim at radius ${radius}, height ${height}.`)
+    return { point: found.middle, start: found.start, end: found.end } as FilletEdgeReference
+  })
+}
+
+/** The volume of a document's final solid, failing if any reference in it did not resolve. */
+function resolvedVolume(features: Feature[]): number {
+  const last = features.at(-1) as Extract<Feature, { kind: 'fillet' }>
+  const evaluation = evaluateOperations(buildOperationChain(last, features))
+  try {
+    expect(evaluation.unresolved).toEqual([])
+    return measureVolume(evaluation.shape)
+  } finally {
+    evaluation.release()
+  }
 }
 
 beforeAll(async () => {
@@ -277,6 +301,35 @@ describe('golden parts', () => {
     const volume = volumeOf([...base, createFilletFeature(corners, 1, 3)])
 
     expect(volume).toBeCloseTo(20 * 20 * 10 - 4 * (9 - Math.PI * 9 / 4) * 10, 5)
+  })
+
+  it('chamfers a revolved rim, anchored to the profile corner that swept it', () => {
+    // The 10..20 tube section, its outer top corner (20, 5) swept round Y.
+    // Picked off the solid, the rim anchors to that corner, and the anchor is
+    // what the kernel matches — on a full turn and on a quarter turn, whose
+    // rim ends where the turn ends.
+    for (const angle of [360, 90]) {
+      const sketch = sketchOf(rectangle([10, 0], [20, 5]))
+      const base: Feature[] = [sketch, revolveOf(sketch, angle, 'Y')]
+      const rim = rimReference(base, 20, 5)
+      const [anchored] = anchorEdgeReferences([rim], base)
+      expect(anchored.anchor).toMatchObject({ kind: 'profileRevolve' })
+      const chamfer = createFilletFeature([anchored], 1, 1, { blend: 'chamfer' })
+
+      // Pappus: a 1 × 1 right triangle, its centroid 1/3 in from radius 20,
+      // swept through the revolve's angle.
+      expect(resolvedVolume([...base, chamfer])).toBeCloseTo(
+        Math.PI * (20 ** 2 - 10 ** 2) * 5 * angle / 360 - 0.5 * (20 - 1 / 3) * angle * Math.PI / 180, 4)
+
+      // Widen the section to 25: the chamfer follows the corner out.
+      const [bottom, outside, top] = sketch.entities as Extract<SketchEntity, { type: 'line' }>[]
+      bottom.end = [25, 0]
+      outside.start = [25, 0]
+      outside.end = [25, 5]
+      top.start = [25, 5]
+      expect(resolvedVolume([...base, chamfer])).toBeCloseTo(
+        Math.PI * (25 ** 2 - 10 ** 2) * 5 * angle / 360 - 0.5 * (25 - 1 / 3) * angle * Math.PI / 180, 4)
+    }
   })
 
   it('revolves a solid cylinder when the profile meets the axis', () => {

@@ -84,6 +84,30 @@ test('picks an edge of the part to fillet', async ({ page }) => {
   expect(picked).toBe(true)
 })
 
+test('chamfers a picked edge of the part', async ({ page }) => {
+  await plate(page)
+  await page.getByTitle('Home view (Isometric Z-up)').click()
+  await page.getByTitle('Chamfer selected edges').first().click()
+  const banner = page.locator('.fillet-pick-banner')
+  await expect(banner).toContainText('SELECT EDGES TO CHAMFER')
+
+  const box = (await viewport(page).boundingBox())!
+  let picked = false
+  for (let dy = 0; dy < box.height / 2 && !picked; dy += 8) {
+    await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2 + dy)
+    picked = ((await banner.textContent()) ?? '').includes('1 edge selected')
+  }
+  expect(picked).toBe(true)
+
+  await page.getByLabel('Chamfer distance').fill('1')
+  await banner.getByRole('button', { name: 'Apply' }).click()
+  await expect(banner).toBeHidden()
+  await expect.poll(async () => (await readDocument(page)).features.find((feature) => feature.kind === 'fillet')).toMatchObject({
+    name: 'Chamfer 1', parameters: { radius: 1, blend: 'chamfer' },
+  })
+  await expect(page.locator('.properties-panel .panel-header')).toContainText('CHAMFER')
+})
+
 test('an orthographic view draws and picks the part, and is remembered', async ({ page }) => {
   const extrudeId = await plate(page)
   await page.getByTitle('Home view (Isometric Z-up)').click()

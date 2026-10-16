@@ -24,6 +24,8 @@ export type KernelFilletOperation = {
   featureId: string
   featureName: string
   radius: number
+  /** Rounds and chamfers need different OpenCascade builders, so a run never mixes them. */
+  blend: 'round' | 'chamfer'
   radius2?: number
   cornerStyle?: 'spherical' | 'mitered'
   filletShape?: 'rational' | 'quasiAngular' | 'polynomial'

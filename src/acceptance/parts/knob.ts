@@ -1,13 +1,14 @@
 import { normalizeArc } from '../../core/arc-geometry'
-import { createEmptyDocument, createId, type CadDocument, type ExtrudeFeature, type RevolveFeature, type SketchFeature } from '../../core/model'
+import { anchorEdgeReferences } from '../../core/edge-anchor'
+import { createEmptyDocument, createId, type CadDocument, type ExtrudeFeature, type FilletFeature, type RevolveFeature, type SketchFeature } from '../../core/model'
 import { closedPolyline, drivenLength, feature, parameter, settle } from '../harness'
 
 /**
  * A4 — parametric knob.
  *
- * Today: the body revolved about a construction centreline, and a blind
- * D-shaft bore with a clearance allowance. Waiting on a circular pattern for
- * the grip grooves and chamfer for the top edge.
+ * Today: the body revolved about a construction centreline, a blind D-shaft
+ * bore with a clearance allowance, and a chamfered top edge. Waiting on a
+ * circular pattern for the grip grooves.
  *
  * The flat is placed the way a shaft is specified: by its distance from the
  * bore centre, a centre-to-line dimension.
@@ -67,6 +68,14 @@ export function buildKnob(): CadDocument {
     parameters: { distance: 10, symmetric: false, edgeRadius: 0 }, formulas: { distance: 'bore_depth' },
   })
 
+  // The top rim, swept round the axis by the section's top outside corner. It
+  // is anchored to that corner, so it follows the knob's radius and height.
+  const topChamfer = feature<FilletFeature>({
+    id: 'knob-top-chamfer', kind: 'fillet', name: 'Top chamfer',
+    parameters: { radius: 1, blend: 'chamfer', cornerStyle: 'spherical', filletShape: 'rational' }, formulas: { radius: 'top_chamfer' },
+    edges: anchorEdgeReferences([{ start: [radius, 0, height], end: [radius, 0, height], point: [-radius, 0, height] }], [body, revolve]),
+  })
+
   return settle({
     ...createEmptyDocument(),
     id: 'acceptance-knob',
@@ -78,19 +87,23 @@ export function buildKnob(): CadDocument {
       parameter('flat', '4.5'),
       parameter('clearance', '0.2'),
       parameter('bore_depth', '10'),
+      parameter('top_chamfer', '1'),
     ],
-    features: [body, revolve, bore, boreCut],
+    features: [body, revolve, bore, boreCut, topChamfer],
   })
 }
 
 /**
- * Volume by hand: the cylinder, less the D-bore's area times its depth. The D
- * is the bore circle less the segment beyond the flat, and that segment's
- * area is r²·acos(d/r) − d·√(r² − d²).
+ * Volume by hand: the cylinder, less the D-bore's area times its depth, less
+ * the chamfer. The D is the bore circle less the segment beyond the flat, and
+ * that segment's area is r²·acos(d/r) − d·√(r² − d²). The chamfer is a c × c
+ * right triangle swept round the axis; by Pappus that is its area times the
+ * circumference at its centroid, c/3 in from the rim.
  */
-export function knobVolume(p: { radius: number; height: number; shaft: number; flat: number; clearance: number; depth: number }) {
+export function knobVolume(p: { radius: number; height: number; shaft: number; flat: number; clearance: number; depth: number; c: number }) {
   const r = (p.shaft + p.clearance) / 2
   const d = p.flat + p.clearance / 2 - r
   const segment = r * r * Math.acos(d / r) - d * Math.sqrt(r * r - d * d)
-  return Math.PI * p.radius * p.radius * p.height - (Math.PI * r * r - segment) * p.depth
+  const chamfer = (p.c * p.c / 2) * 2 * Math.PI * (p.radius - p.c / 3)
+  return Math.PI * p.radius * p.radius * p.height - (Math.PI * r * r - segment) * p.depth - chamfer
 }

@@ -70,7 +70,14 @@ describe('interactionModeReducer', () => {
     })
     expect(state).toMatchObject({
       kind: 'fillet-selection', targetId: 'extrude-1', editingFeatureId: 'fillet-1',
-      radiusDraft: '3 mm', cornerStyle: 'mitered', edges: [],
+      radiusDraft: '3 mm', cornerStyle: 'mitered', edges: [], blend: 'round',
     })
+  })
+
+  it('carries a chamfer blend through edge selection', () => {
+    const state = interactionModeReducer(INITIAL_INTERACTION_MODE, {
+      type: 'START_FILLET', targetId: 'extrude-1', initialRadiusDraft: '1 mm', blend: 'chamfer',
+    })
+    expect(state).toMatchObject({ kind: 'fillet-selection', blend: 'chamfer' })
   })
 })

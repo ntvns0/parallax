@@ -5,11 +5,11 @@ import {
   Ruler,
 } from 'lucide-react'
 import { useDocumentStore } from '../core/document-store'
-import type { Feature, FeatureKind } from '../core/model'
+import type { Feature, FeatureKind, FilletBlend } from '../core/model'
 import { getProfileRegions } from '../core/sketch'
 import { defaultExtrudeDistance, materialDepthUnderSketch, FALLBACK_EXTRUDE_DISTANCE_MM } from '../core/extrude-defaults'
 import { cachedExactMesh } from '../kernel/exact-kernel'
-import { BoxFeatureIcon, CylinderFeatureIcon, ExtrudeFeatureIcon, FilletFeatureIcon, RevolveFeatureIcon, SketchFeatureIcon, SphereFeatureIcon } from './icons'
+import { BoxFeatureIcon, ChamferFeatureIcon, CylinderFeatureIcon, ExtrudeFeatureIcon, FilletFeatureIcon, RevolveFeatureIcon, SketchFeatureIcon, SphereFeatureIcon } from './icons'
 
 export function IconButton({ label, disabled, active, onClick, children }: {
   label: string
@@ -53,7 +53,7 @@ export function ModelToolbar({
   onStartSketch: () => void
   measureActive: boolean
   onMeasureChange: (active: boolean) => void
-  onStartFillet: (feature: Extract<Feature, { kind: 'extrude' | 'fillet' }>) => void
+  onStartFillet: (feature: Extract<Feature, { kind: 'extrude' | 'fillet' }>, blend: FilletBlend) => void
 }) {
   const canExtrude = selectedFeature?.kind === 'sketch' && getProfileRegions(selectedFeature).length > 0
   const canFillet = selectedFeature?.kind === 'extrude' || selectedFeature?.kind === 'fillet'
@@ -75,8 +75,11 @@ export function ModelToolbar({
         if (selectedFeature?.kind === 'sketch') useDocumentStore.getState().revolveSketch(selectedFeature.id)
       }}><RevolveFeatureIcon /></IconButton>
       <IconButton label={canFillet ? 'Fillet selected edges' : 'Select an exact solid to fillet edges'} disabled={!canFillet} onClick={() => {
-        if (selectedFeature?.kind === 'extrude' || selectedFeature?.kind === 'fillet') onStartFillet(selectedFeature)
+        if (selectedFeature?.kind === 'extrude' || selectedFeature?.kind === 'fillet') onStartFillet(selectedFeature, 'round')
       }}><FilletFeatureIcon /></IconButton>
+      <IconButton label={canFillet ? 'Chamfer selected edges' : 'Select an exact solid to chamfer edges'} disabled={!canFillet} onClick={() => {
+        if (selectedFeature?.kind === 'extrude' || selectedFeature?.kind === 'fillet') onStartFillet(selectedFeature, 'chamfer')
+      }}><ChamferFeatureIcon /></IconButton>
     </div>
   )
 }

@@ -181,7 +181,7 @@ function applyOperations(
     if (operation.type === 'fillet') {
       if (!shape) throw new Error('Choose an edge on a solid before adding a fillet.')
       const fillets: KernelFilletOperation[] = [operation]
-      while (operations[index + 1]?.type === 'fillet') {
+      while (sameBlendRun(operation, operations[index + 1])) {
         fillets.push(operations[index + 1] as KernelFilletOperation)
         index += 1
       }
@@ -233,7 +233,12 @@ function applyOperations(
  */
 function isLegalBoundary(operations: KernelOperation[], length: number): boolean {
   if (length <= 0 || length >= operations.length) return false
-  return !(operations[length - 1].type === 'fillet' && operations[length].type === 'fillet')
+  return !sameBlendRun(operations[length - 1], operations[length])
+}
+
+/** Whether `next` joins the fillet run `current` belongs to: both blends, and the same blend. */
+function sameBlendRun(current: KernelOperation, next: KernelOperation | undefined) {
+  return current.type === 'fillet' && next?.type === 'fillet' && next.blend === current.blend
 }
 
 type PrefixEntry = {

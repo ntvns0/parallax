@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { beforeAll, describe, expect, it } from 'vitest'
 import initOpenCascade from 'replicad-opencascadejs/src/replicad_single.js'
-import { draw, setOC, type Shape3D } from 'replicad'
+import { draw, measureVolume, setOC, type Shape3D } from 'replicad'
 import { applyFilletGroup, edgeGeometry } from './fillet-apply'
 import type { KernelFilletOperation } from './kernel-types'
 import type { FilletEdgeReference, Vec3 } from '../core/model'
@@ -68,12 +68,13 @@ function verticalEdgeReference(shape: Shape3D): FilletEdgeReference {
   return verticalEdgeReferences(shape)[0]
 }
 
-function filletOperation(edges: FilletEdgeReference[], radius: number): KernelFilletOperation {
+function filletOperation(edges: FilletEdgeReference[], radius: number, blend: 'round' | 'chamfer' = 'round'): KernelFilletOperation {
   return {
     type: 'fillet',
     featureId: 'fillet-1',
-    featureName: 'Fillet 1',
+    featureName: blend === 'chamfer' ? 'Chamfer 1' : 'Fillet 1',
     radius,
+    blend,
     cornerStyle: 'spherical',
     filletShape: 'rational',
     edges,
@@ -175,6 +176,34 @@ describe('applyFilletGroup', () => {
       code: 'unresolved-edge', subject: { kind: 'edge' },
       repairs: [expect.objectContaining({ kind: 'reselect-edge' })],
     })
+    solid.delete()
+  }, 120_000)
+})
+
+describe('chamfers', () => {
+  it('cuts a corner off flat, removing a right triangle of the corner along its length', () => {
+    const solid = plate()
+    const result = applyFilletGroup(solid, [filletOperation([verticalEdgeReference(solid)], 3, 'chamfer')])
+
+    expect(result.unresolved).toEqual([])
+    // 3 mm back along each face: a 3 × 3 right triangle, 10 mm tall.
+    expect(measureVolume(result.shape)).toBeCloseTo(PLATE * PLATE * THICKNESS - (3 * 3 / 2) * THICKNESS, 4)
+    result.shape.delete()
+    solid.delete()
+  }, 120_000)
+
+  it('reports an oversized chamfer in its own words, with a distance that builds', () => {
+    const solid = plate()
+    const reference = verticalEdgeReference(solid)
+    const result = applyFilletGroup(solid, [filletOperation([reference], 30, 'chamfer')])
+
+    expect(result.shape).toBe(solid)
+    const [diagnostic] = result.unresolved
+    expect(diagnostic.message).toMatch(/30 mm distance leaves no room for the cut/)
+    expect(diagnostic.subject.label).toBe('Chamfer distance')
+    const retry = applyFilletGroup(solid, [filletOperation([reference], diagnostic.suggestedRadius!, 'chamfer')])
+    expect(retry.unresolved).toEqual([])
+    retry.shape.delete()
     solid.delete()
   }, 120_000)
 })

@@ -17,7 +17,7 @@ import {
 import { prepareFilletFeature, useDocumentStore } from '../core/document-store'
 import { anchorEdgeReferences } from '../core/edge-anchor'
 import { logDiagnostic } from '../core/diagnostics'
-import { validateCadDocument, type CadDocument, type Feature, type FilletCornerStyle, type FilletEdgeReference } from '../core/model'
+import { validateCadDocument, type CadDocument, type Feature, type FilletBlend, type FilletCornerStyle, type FilletEdgeReference } from '../core/model'
 import { formatLength, formatLengthInput, parseLengthInput, sketchSnapIncrement, unitLabel } from '../core/units'
 import { cachedExactMesh, preflightExactFillet, useKernelStore } from '../kernel/exact-kernel'
 import { expandConnectedFilletEdges, extractMeshEdges } from '../kernel/fillet-edge-reference'
@@ -25,7 +25,7 @@ import { SketchEditor } from '../sketcher/SketchEditor'
 import { SceneViewport, type SketchFacePickResult } from '../viewport/SceneViewport'
 import { useViewportStore } from '../viewport/viewport-store'
 import { FeaturePanel } from './FeatureTree'
-import { FilletFeatureIcon } from './icons'
+import { ChamferFeatureIcon, FilletFeatureIcon } from './icons'
 import { INITIAL_INTERACTION_MODE, interactionModeReducer } from './interaction-mode'
 import { CommandPalette, HelpDialog, MeasurementPanel, PlanePicker, ProjectMenu, SettingsDialog } from './ProjectDialogs'
 import { PropertiesPanel } from './PropertyPanel'
@@ -86,8 +86,9 @@ export function App() {
     setNotice({ tone: 'success', message: `Sketching on ${result.featureName} · ${result.plane} plane at ${formatLength(result.planeOffset, displayUnits)}.` })
   }
 
-  function startFillet(target: Extract<Feature, { kind: 'extrude' | 'fillet' }>) {
-    dispatch({ type: 'START_FILLET', targetId: target.id, initialRadiusDraft: formatLengthInput(2, displayUnits) })
+  function startFillet(target: Extract<Feature, { kind: 'extrude' | 'fillet' }>, blend: FilletBlend) {
+    const initialSize = blend === 'chamfer' ? 1 : 2
+    dispatch({ type: 'START_FILLET', targetId: target.id, initialRadiusDraft: formatLengthInput(initialSize, displayUnits), blend })
     setNotice(null)
   }
 
@@ -106,6 +107,7 @@ export function App() {
       type: 'START_FILLET', targetId: feature.id, editingFeatureId: feature.id,
       initialRadiusDraft: formatLengthInput(feature.parameters.radius, displayUnits),
       initialCornerStyle: feature.parameters.cornerStyle,
+      blend: feature.parameters.blend ?? 'round',
     })
     setNotice(null)
   }
@@ -132,8 +134,9 @@ export function App() {
   async function applyFillet() {
     if (mode.kind !== 'fillet-selection' || !mode.edges.length || mode.status.applying) return
     const radius = parseLengthInput(mode.radiusDraft, displayUnits)
+    const chamfer = mode.blend === 'chamfer'
     if (radius === null || radius < 0.001) {
-      dispatch({ type: 'SET_FILLET_STATUS', status: { applying: false, error: `Enter a radius of at least ${formatLength(0.001, displayUnits)}.` } })
+      dispatch({ type: 'SET_FILLET_STATUS', status: { applying: false, error: `Enter a ${chamfer ? 'distance' : 'radius'} of at least ${formatLength(0.001, displayUnits)}.` } })
       return
     }
     dispatch({ type: 'SET_FILLET_STATUS', status: { applying: true, error: null } })
@@ -142,7 +145,7 @@ export function App() {
       if (mode.editingFeatureId) {
         const featureIndex = store.document.features.findIndex((candidate) => candidate.id === mode.editingFeatureId)
         const current = store.document.features[featureIndex]
-        if (current?.kind !== 'fillet') throw new Error('The fillet being repaired is no longer available.')
+        if (current?.kind !== 'fillet') throw new Error(`The ${chamfer ? 'chamfer' : 'fillet'} being repaired is no longer available.`)
         const priorFeatures = store.document.features.slice(0, featureIndex)
         const target = [...priorFeatures].reverse().find(
           (candidate) => candidate.kind === 'extrude' || candidate.kind === 'revolve' || candidate.kind === 'fillet',
@@ -157,14 +160,14 @@ export function App() {
         useDocumentStore.getState().updateFeature(feature.id, { edges: feature.edges, parameters: feature.parameters })
         setNotice({ tone: 'success', message: `${feature.name} reattached to ${mode.edges.length} selected edge${mode.edges.length === 1 ? '' : 's'}.` })
       } else {
-        const feature = prepareFilletFeature(mode.edges, radius, store.document.features, { cornerStyle: mode.cornerStyle })
+        const feature = prepareFilletFeature(mode.edges, radius, store.document.features, { cornerStyle: mode.cornerStyle, blend: mode.blend })
         await preflightExactFillet(mode.targetId, feature, store.document.features)
         useDocumentStore.getState().addFillet(feature)
-        setNotice({ tone: 'success', message: `${formatLength(radius, displayUnits)} fillet added to ${mode.edges.length} selected edge${mode.edges.length === 1 ? '' : 's'}.` })
+        setNotice({ tone: 'success', message: `${formatLength(radius, displayUnits)} ${chamfer ? 'chamfer' : 'fillet'} added to ${mode.edges.length} selected edge${mode.edges.length === 1 ? '' : 's'}.` })
       }
       dispatch({ type: 'CANCEL' })
     } catch (error) {
-      dispatch({ type: 'SET_FILLET_STATUS', status: { applying: false, error: error instanceof Error ? error.message : 'The exact kernel could not create that fillet.' } })
+      dispatch({ type: 'SET_FILLET_STATUS', status: { applying: false, error: error instanceof Error ? error.message : `The exact kernel could not create that ${chamfer ? 'chamfer' : 'fillet'}.` } })
     }
   }
 
@@ -240,6 +243,7 @@ export function App() {
   const facePickerActive = mode.kind === 'face-picker'
   const faceHover = mode.kind === 'face-picker' ? mode.hover : null
   const filletTargetId = mode.kind === 'fillet-selection' ? mode.targetId : null
+  const chamfering = mode.kind === 'fillet-selection' && mode.blend === 'chamfer'
   const measureActive = mode.kind === 'measurement'
   const measurement = mode.kind === 'measurement' ? mode.measurement : { hover: null, start: null, end: null }
 
@@ -357,22 +361,22 @@ export function App() {
           )}
           {mode.kind === 'fillet-selection' && (
             <div className="face-pick-banner fillet-pick-banner" role="status">
-              <FilletFeatureIcon />
+              {chamfering ? <ChamferFeatureIcon /> : <FilletFeatureIcon />}
               <span>
-                <strong>{mode.editingFeatureId ? 'RESELECT FILLET EDGES' : 'SELECT EDGES TO FILLET'}</strong>
-                {mode.status.error ?? (mode.edges.length ? `${mode.edges.length} edge${mode.edges.length === 1 ? '' : 's'} selected · set a radius and apply` : 'Click sharp edges · connected corner edges auto-propagate')}
+                <strong>{mode.editingFeatureId ? `RESELECT ${chamfering ? 'CHAMFER' : 'FILLET'} EDGES` : `SELECT EDGES TO ${chamfering ? 'CHAMFER' : 'FILLET'}`}</strong>
+                {mode.status.error ?? (mode.edges.length ? `${mode.edges.length} edge${mode.edges.length === 1 ? '' : 's'} selected · set a ${chamfering ? 'distance' : 'radius'} and apply` : 'Click sharp edges · connected corner edges auto-propagate')}
               </span>
               <label className="fillet-radius-field">
-                <span>Radius</span>
+                <span>{chamfering ? 'Distance' : 'Radius'}</span>
                 <input
-                  aria-label="Fillet radius"
+                  aria-label={chamfering ? 'Chamfer distance' : 'Fillet radius'}
                   value={mode.radiusDraft}
                   onChange={(event) => dispatch({ type: 'SET_FILLET_RADIUS_DRAFT', draft: event.target.value })}
                   onKeyDown={(event) => { if (event.key === 'Enter') void applyFillet() }}
                 />
                 <em>{unitLabel(displayUnits)}</em>
               </label>
-              <label className="fillet-corner-style" style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', color: 'var(--text-color, #e0e0e0)', cursor: 'pointer' }}>
+              {!chamfering && <label className="fillet-corner-style" style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', color: 'var(--text-color, #e0e0e0)', cursor: 'pointer' }}>
                 <span>Corners</span>
                 <select
                   value={mode.cornerStyle}
@@ -382,7 +386,7 @@ export function App() {
                   <option value="spherical">Spherical Blend</option>
                   <option value="mitered">Mitered Sharp</option>
                 </select>
-              </label>
+              </label>}
               <label className="fillet-propagate-toggle" style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', color: 'var(--text-color, #e0e0e0)', cursor: 'pointer', userSelect: 'none' }}>
                 <input type="checkbox" checked={mode.propagate} onChange={(event) => dispatch({ type: 'SET_FILLET_PROPAGATE', propagate: event.target.checked })} />
                 <span>Propagate corners</span>

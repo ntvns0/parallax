@@ -31,13 +31,13 @@ The project is still a pre-alpha. It proves the browser architecture and the pri
 | 3D viewport | ✅ | Z-up grid, cameras, view cube, selection, transform gizmo, weighted edges and part-scaled ambient occlusion |
 | Inspection and measurement | ✅ | Feature inspection and snapped point-to-point measurements with axis deltas |
 | Direct manipulation | 🚧 | Push/pull on the end cap of a sweep edits the owning extrusion as one undo step; fillet handles and on-model dimensions remain |
-| Parametric document | ✅ | Versioned schema (v8), editable feature parameters, named parameters and formulas, serialization |
+| Parametric document | ✅ | Versioned schema (v9), editable feature parameters, named parameters and formulas, serialization |
 | Undo/redo | ✅ | Snapshot history; command-level history is planned |
 | Local persistence | ✅ | IndexedDB multi-project autosave, recovery snapshots, portable project JSON |
 | Primitive features | 🚧 | Editable previews; not exact B-rep features yet |
 | Sketching | 🚧 | Line, rectangle, circle, centre-point arc, trim, corner fillet, snapping, multi-region profiles with holes, and boundaries mixing straight and curved edges |
 | Constraint solving | 🚧 | PlaneGCS worker with an explicit anchor; constraints are listed, added, edited, and removed by hand, and conflicts name the geometry |
-| Exact solids | 🚧 | Exact new-body, additive, subtractive, and filleted extrusion and revolve are integrated, and both now reach the viewport as B-rep rather than preview geometry; an oversized fillet reports the radius that would fit instead of failing the part |
+| Exact solids | 🚧 | Exact new-body, additive, subtractive, and filleted or chamfered extrusion and revolve are integrated, and both now reach the viewport as B-rep rather than preview geometry; an oversized fillet reports the radius that would fit instead of failing the part |
 | STEP export | ✅ | Available for supported exact extrusions and revolves |
 | Boolean modeling | 🚧 | Exact add and cut are integrated; intersect and multi-body management remain |
 | Drawings | 🚧 | Third-angle sheets with a hatched full section and generated dimensions export to PDF and SVG; not associative, no GD&T |
@@ -89,10 +89,10 @@ Every part is checked three ways:
 
 | # | Part | What it exercises | Edit test | Missing today |
 | --- | --- | --- | --- | --- |
-| A1 | **Screw-mount L-bracket.** 40 mm wide, legs of 50 and 30 mm, 4 mm thick, R4 inside corner, 1 mm chamfer on outside edges, two countersunk M4 holes per leg | Face sketches, extrude, fillet, chamfer, Hole, linear pattern | Thickness 4 → 6, hole count 2 → 3 per leg | Chamfer, Hole, linear pattern |
+| A1 | **Screw-mount L-bracket.** 40 mm wide, legs of 50 and 30 mm, 4 mm thick, R4 inside corner, 1 mm chamfer on outside edges, two countersunk M4 holes per leg | Face sketches, extrude, fillet, chamfer, Hole, linear pattern | Thickness 4 → 6, hole count 2 → 3 per leg | Hole, linear pattern |
 | A2 | **Desk cable clip.** Screw-down base, a C-shaped Ø10 cable channel with 2 mm walls and a 7 mm snap opening, symmetric about a centreline, 15 mm deep, one countersunk hole in the base | Arcs, trim, sketch fillet, construction centreline, symmetric constraint, offset, mirror | Channel Ø10 → Ø14, wall 2 → 2.5 | Sketch offset, mirror, Hole |
 | A3 | **Electronics enclosure with lid.** 80 × 50 × 30 mm box, shelled to 2 mm with an open top, R3 vertical edges, four Ø6 standoffs with Ø4.2 heat-set insert holes in a rectangular pattern, a USB-C cutout in a side wall, and a separate lid body with a lip set by a `clearance = 0.2 mm` parameter and a pattern of vent slots | Shell, multiple bodies, rectangular pattern, side-face sketches, Hole, per-body export | Box 80 × 50 → 100 × 60, clearance 0.2 → 0.3 | Shell, multiple bodies, rectangular pattern, Hole, per-body export |
-| A4 | **Parametric knob.** A revolved body, a 6 mm D-shaft bore with the flat at 4.5 mm plus clearance, 24 grip grooves in a circular pattern, and a chamfered top edge | Revolve, construction axis, circular pattern, chamfer, formula-driven dimensions | Groove count 24 → 18, shaft 6 → 5 | Circular pattern, chamfer |
+| A4 | **Parametric knob.** A revolved body, a 6 mm D-shaft bore with the flat at 4.5 mm plus clearance, 24 grip grooves in a circular pattern, and a chamfered top edge | Revolve, construction axis, circular pattern, chamfer, formula-driven dimensions | Groove count 24 → 18, shaft 6 → 5 | Circular pattern |
 
 Three of these are the same parts as the template IDs started on the
 `codex/cad-print-templates` branch (`l-bracket`, `cable-guide`,
@@ -361,9 +361,31 @@ it needs one.
     - A4 now places its flat by centre-to-flat distance, not chord length.
     - `e2e/sketcher.spec.ts` dimensions a circle centre to a line and drives it.
   - A2 now waits only on offset, mirror, and Hole.
-- ⬜ **3.3 Chamfer** (A1, A4). Equal-distance, then distance-and-angle. Reuse the
-  fillet's edge anchors, limit search, and repair action wholesale; a chamfer is
-  the same feature with a different blend.
+- ✅ **3.3 Chamfer** (A1, A4). Equal-distance is done; distance-and-angle is
+  not, and waits until a part needs it.
+  - A chamfer is a fillet feature with `parameters.blend: 'chamfer'` (schema
+    9), so it reuses the edge anchors, edge picking, the limit search, and the
+    repair action. Its oversized message speaks of a distance and a cut.
+  - The evaluator groups consecutive fillets of one blend into one builder
+    call, and never mixes rounds and chamfers in one call.
+  - The toolbar's **Chamfer selected edges** button starts the same edge pick
+    as fillet. The banner and the property panel say Distance and hide the
+    corner options, which a flat cut does not have.
+  - Pulled forward from 5.1: a revolve's edges now anchor too. A circle swept
+    round the axis is named by the profile corner that swept it
+    (`profileRevolve`), so the knob's chamfered rim follows a change of
+    radius.
+  - Proof:
+    - `fillet-apply.test.ts` cuts a 3 mm chamfer to the hand volume and reports
+      an oversized one with a distance that builds.
+    - `golden-parts.test.ts` chamfers a revolved rim on a full turn and a
+      quarter turn, then widens the section and checks the chamfer followed,
+      by Pappus.
+    - A1 chamfers its three outside edges and A4 its top rim, both to hand
+      volumes, and both survive their edit tests. A1's edit now changes the
+      chamfer too.
+    - `e2e/viewport-interactions.spec.ts` picks a plate edge, chamfers it 1 mm,
+      and checks the saved feature.
 - ⬜ **3.4 Hole feature** (A1, A2, A3). The existing roadmap item, scoped for
   printing:
   - Simple, counterbored, and countersunk holes; blind and through-all.
@@ -418,7 +440,9 @@ Pull an item forward the moment an acceptance edit test needs it.
 
 - ⬜ **5.1 Anchors for every referenced face and edge.** Hole placement faces,
   pattern seeds, and shell faces all need the provenance approach that fillet
-  edges and face-attached sketches already use.
+  edges and face-attached sketches already use. Circles swept by a revolve were
+  pulled forward for 3.3; a partial revolve's end-cap edges are still
+  unanchored.
 - ⬜ **5.2 Dependency-aware recompute.** Skip unaffected features in the middle
   of a history (Milestone 4).
 - ⬜ **5.3 Command-level undo.** Undo by named action rather than whole-document
@@ -528,7 +552,7 @@ Status: ⬜ Planned
 - ✅ Multiple closed regions and profiles with internal holes
 - ✅ Revolve about the sketch X or Y axis, with new-body, add, and cut operations
 - ⬜ Manufacturing-aware Hole feature: simple, counterbored, and countersunk forms; through-all and blind extents; placement from sketch points or face coordinates; standard diameters and thread metadata; exact boolean geometry; editable design intent; and data for generated drawing callouts
-- 🚧 Exact selectable-edge fillet is integrated, and an oversized radius is reported with the largest one that works instead of failing the part; chamfer remains
+- ✅ Exact selectable-edge fillet and equal-distance chamfer are integrated, and an oversized radius or distance is reported with the largest one that works instead of failing the part
 - 🔬 Mitered corner fillets: fix OpenCascade 2-edge sharp fillet intersections without falling back to spherical blends or edge-by-edge mutations
 - ⬜ Shell and draft
 - ⬜ Linear, circular, and mirror patterns
@@ -717,7 +741,7 @@ These are implementation-shaping notes from a code review, not committed feature
 
 ### Roadmap/documentation cleanup
 
-- ✅ Reconcile milestone wording with the current implementation before the next planning pass. Kept current since: the model schema is v8, and provenance anchors now cover fillet edges and face-attached sketches. Stable topological naming still blocks safe dependency-aware incremental recomputation, but it no longer blocks every cache or performance improvement.
+- ✅ Reconcile milestone wording with the current implementation before the next planning pass. Kept current since: the model schema is v9, and provenance anchors now cover fillet and chamfer edges (swept by extrusions and revolves) and face-attached sketches. Stable topological naming still blocks safe dependency-aware incremental recomputation, but it no longer blocks every cache or performance improvement.
 
 ## Kernel behaviour notes
 
@@ -743,6 +767,12 @@ Facts about OpenCascade through Replicad that cost real effort to establish. Rec
   nothing updates it after that. Giving an existing pass an orthographic camera
   gives wrong occlusion. `ViewportController.setProjection` rebuilds the whole
   composer instead.
+- **A revolve's swept circles start in the sketch plane.** Each profile
+  vertex sweeps a circle whose seam is at that vertex, turning by the
+  right-hand rule about the axis direction. A partial turn's arc therefore ends
+  at the vertex rotated by the full angle, with its middle at half the angle.
+  `resolveEdgeAnchor` predicts revolve edges this way, and
+  `golden-parts.test.ts` checks it on a quarter turn.
 - **A face sketch's own cut matches its face too.** Deriving a face anchor by
   "which sweep end sits at this offset" finds the cut made *from* the sketch,
   because that cut starts exactly on the face. The resulting anchor is circular
@@ -767,7 +797,7 @@ Faces and edges may change identity when an upstream feature recomputes. Solving
 
 **The approach is now established, and applied twice.** A reference names *what made the geometry* rather than where it was, and is re-derived from the document on every evaluation:
 
-- `core/edge-anchor.ts` names a solid edge by the sketch entity that swept it and where along that entity it sits, scoped to the extrusion that produced it.
+- `core/edge-anchor.ts` names a solid edge by the sketch entity that swept it and where along that entity it sits, scoped to the extrusion that produced it. A circle a revolve sweeps is named by the profile corner that swept it.
 - `core/face-anchor.ts` names the face a sketch is attached to by the sweep end it lies on, so the sketch plane follows its host.
 
 Both are pure functions of the document — no solid required — which is what lets migrations backfill saved parts instead of demanding a rebuild, and what makes them testable without WebAssembly. Geometric fingerprinting remains the authority downstream: an anchor is a *prediction*, matched against the real solid, so a wrong one fails to match rather than silently attaching to the wrong topology.

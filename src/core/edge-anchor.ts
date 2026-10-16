@@ -1,7 +1,8 @@
 import { arcEndPoint, arcMidPoint, arcPointAt, arcStartPoint, locateOnArc } from './arc-geometry'
 import { extrudeSweepRange } from './extrude-direction'
 import { currentPlaneOffset } from './face-anchor'
-import type { EdgeAnchor, ExtrudeFeature, Feature, FilletEdgeReference, SketchEntity, SketchFeature, Vec2, Vec3 } from './model'
+import type { EdgeAnchor, ExtrudeFeature, Feature, FilletEdgeReference, RevolveFeature, SketchEntity, SketchFeature, Vec2, Vec3 } from './model'
+import { axialPosition, revolveAxis, rotateAboutAxis } from './revolve-axis'
 import { projectToSketchPlane, sketchPlaneOffset, sketchPointToWorld } from './sketch-plane'
 import { ANCHOR_MATCH_DISTANCE_MM } from './tolerance-policy'
 
@@ -35,7 +36,24 @@ function extrusions(features: Feature[]): { extrude: ExtrudeFeature; sketch: Ske
   return found
 }
 
-/** Where a point sits along an entity, and how far it is from the curve. */
+/** Every revolve in the document paired with the sketch it was built from. */
+function revolutions(features: Feature[]): { revolve: RevolveFeature; sketch: SketchFeature }[] {
+  const found: { revolve: RevolveFeature; sketch: SketchFeature }[] = []
+  for (const feature of features) {
+    if (feature.kind !== 'revolve') continue
+    const source = features.find((candidate) => candidate.id === feature.sketchId)
+    if (source?.kind === 'sketch') found.push({ revolve: feature, sketch: source })
+  }
+  return found
+}
+
+/** An entity's two ends, or none for a circle, which has no vertex to sweep. */
+function entityEnds(entity: SketchEntity): [Vec2, Vec2] | null {
+  if (entity.type === 'circle') return null
+  return entity.type === 'arc' ? [arcStartPoint(entity), arcEndPoint(entity)] : [entity.start, entity.end]
+}
+
+/** Where on an entity a point sits, and how far it is from the curve. */
 function locateOnEntity(entity: SketchEntity, point: Vec2): { t: number; distance: number } | null {
   if (entity.type === 'circle') {
     if (entity.radius <= 0) return null
@@ -148,7 +166,56 @@ export function deriveEdgeAnchor(reference: FilletEdgeReference, features: Featu
       }
     }
   }
+  return deriveRevolveAnchor(reference, features)
+}
+
+/**
+ * A revolve turns each vertex of its profile into a circle about the axis. An
+ * edge is one of those when its ends sit at that vertex's height along the
+ * axis and its distance out from it. The point between them is allowed the
+ * slack of a tessellated pick, which lies on a chord rather than the curve.
+ */
+function deriveRevolveAnchor(reference: FilletEdgeReference, features: Feature[]): EdgeAnchor | undefined {
+  for (const { revolve, sketch } of revolutions(features)) {
+    const axis = revolveAxis(revolve, sketch, currentPlaneOffset(sketch, features))
+    if (!axis) continue
+    const [start, end, point] = [reference.start, reference.end, reference.point].map((position) => axialPosition(axis, position))
+    for (const entity of solidEntities(sketch)) {
+      const ends = entityEnds(entity)
+      if (!ends) continue
+      for (const index of [0, 1] as const) {
+        const vertex = axialPosition(axis, sketchPointToWorld(sketch.plane, ends[index], currentPlaneOffset(sketch, features)))
+        // A vertex on the axis sweeps nothing.
+        if (vertex.radius <= ANCHOR_MATCH_DISTANCE_MM) continue
+        const onCircle = (position: { along: number; radius: number }, slack: number) =>
+          Math.abs(position.along - vertex.along) <= slack && Math.abs(position.radius - vertex.radius) <= slack
+        const chordSlack = ANCHOR_MATCH_DISTANCE_MM + vertex.radius * 0.01
+        if (onCircle(start, ANCHOR_MATCH_DISTANCE_MM) && onCircle(end, ANCHOR_MATCH_DISTANCE_MM) && onCircle(point, chordSlack)) {
+          return { kind: 'profileRevolve', sketchId: sketch.id, entityId: entity.id, featureId: revolve.id, end: index }
+        }
+      }
+    }
+  }
   return undefined
+}
+
+/**
+ * The circle a revolve sweeps from one vertex, as OpenCascade builds it: it
+ * starts where the profile lies, in the sketch plane, and turns through the
+ * revolve's angle, so a full turn starts and ends there with its middle
+ * opposite.
+ */
+function resolveRevolveAnchor(anchor: Extract<EdgeAnchor, { kind: 'profileRevolve' }>, sketch: SketchFeature, entity: SketchEntity, features: Feature[]): FilletEdgeReference | null {
+  const built = features.filter((candidate): candidate is RevolveFeature => candidate.kind === 'revolve' && candidate.sketchId === sketch.id)
+  const revolve = built.find((candidate) => candidate.id === anchor.featureId) ?? built[0]
+  const ends = entityEnds(entity)
+  if (!revolve || !ends) return null
+  const offset = currentPlaneOffset(sketch, features)
+  const axis = revolveAxis(revolve, sketch, offset)
+  if (!axis) return null
+  const start = sketchPointToWorld(sketch.plane, ends[anchor.end], offset)
+  const angle = revolve.parameters.angle
+  return { start, end: rotateAboutAxis(start, axis, angle), point: rotateAboutAxis(start, axis, angle / 2) }
 }
 
 /**
@@ -164,6 +231,7 @@ export function resolveEdgeAnchor(anchor: EdgeAnchor, features: Feature[]): Fill
   if (sketch?.kind !== 'sketch') return null
   const entity = sketch.entities.find((candidate) => candidate.id === anchor.entityId)
   if (!entity || entity.construction) return null
+  if (anchor.kind === 'profileRevolve') return resolveRevolveAnchor(anchor, sketch, entity, features)
 
   // Prefer the extrusion the anchor was derived against. Falling back to the
   // first one built from this sketch keeps anchors written before the id was
