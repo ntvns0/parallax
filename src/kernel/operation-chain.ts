@@ -3,6 +3,7 @@ import { currentPlaneOffset } from '../core/face-anchor'
 import { planeNormalDistance } from '../core/extrude-direction'
 import { holePlacements, holeProblem } from '../core/hole'
 import { patternSeeds, patternTransforms } from '../core/pattern'
+import { currentFaceReference, shellProblem } from '../core/shell'
 import type { Feature, SolidFeature } from '../core/model'
 import { revolveAxis } from '../core/revolve-axis'
 import { getProfileRegions } from '../core/sketch'
@@ -53,6 +54,20 @@ function operationFor(candidate: Feature, features: Feature[]): KernelOperation 
       .filter((seed): seed is KernelPatternSeed => seed !== null && seed.type !== 'fillet' && seed.type !== 'pattern')
     if (!transforms.length || !seeds.length) return null
     return { type: 'pattern' as const, featureId: candidate.id, featureName: candidate.name, seeds, transforms }
+  }
+  if (candidate.kind === 'shell') {
+    // Walls that cannot be made leave the solid alone; the panel says why.
+    if (shellProblem(candidate.parameters)) return null
+    return {
+      type: 'shell' as const,
+      featureId: candidate.id,
+      featureName: candidate.name,
+      thickness: candidate.parameters.thickness,
+      faces: candidate.faces.map((face) => {
+        const { point, normal } = currentFaceReference(face, features)
+        return { point, normal }
+      }),
+    }
   }
   if (candidate.kind === 'hole') {
     // A hole with no points drills nothing, and is left out so it cannot
@@ -155,6 +170,7 @@ export function describeOperationChain(operations: KernelOperation[]) {
         }
       : operation.type === 'hole' ? { form: operation.parameters.form, holes: operation.placements.length }
       : operation.type === 'pattern' ? { seeds: operation.seeds.map((seed) => seed.featureId), copies: operation.transforms.length }
+      : operation.type === 'shell' ? { thickness: operation.thickness, openFaces: operation.faces.length }
       : { radius: operation.radius, selectedEdges: operation.edges.length }),
   }))
 }

@@ -2,10 +2,11 @@ import { useEffect, useState } from 'react'
 import { Download, MousePointer2, Trash2 } from 'lucide-react'
 import { useDocumentStore } from '../core/document-store'
 import { collectDocumentDiagnostics, collectOpenProfileDiagnostics, collectRevolveAxisDiagnostics, findDiagnosticRepair, useFeatureDiagnosticsStore } from '../core/diagnostics'
-import type { Feature, FilletCornerStyle, FilletProfileShape, HoleFeature, HoleForm, HoleParameters, PatternFeature, PatternKind, PatternParameters, SketchFeature, Vec3, WorldAxis } from '../core/model'
+import type { Feature, FilletCornerStyle, FilletProfileShape, HoleFeature, ShellFeature, HoleForm, HoleParameters, PatternFeature, PatternKind, PatternParameters, SketchFeature, Vec3, WorldAxis } from '../core/model'
 import { describePattern, patternProblem, patternSeeds } from '../core/pattern'
 import { applyHolePreset, holeCallout, holePlacements, holeProblem, HOLE_PRESETS } from '../core/hole'
 import { revolveAxisCandidates } from '../core/revolve-axis'
+import { shellProblem } from '../core/shell'
 import { getProfileRegions, sketchBounds } from '../core/sketch'
 import { formatLength, formatLengthInput, parseLengthInput, unitLabel } from '../core/units'
 import { tryEvaluateExpression } from '../core/expression'
@@ -447,6 +448,42 @@ function HoleProperties({ feature }: { feature: HoleFeature }) {
   )
 }
 
+function ShellProperties({ feature, onReselectFaces }: { feature: ShellFeature; onReselectFaces: (feature: ShellFeature) => void }) {
+  const updateParameters = useDocumentStore((state) => state.updateParameters)
+  const displayUnits = useDocumentStore((state) => state.document.displayUnits ?? 'mm')
+  const warning = useFeatureDiagnosticsStore((state) => state.unresolved[feature.id])
+  const thicknessRepair = warning && findDiagnosticRepair(warning, 'apply-thickness')
+  const faceRepair = warning && findDiagnosticRepair(warning, 'reselect-face')
+  const problem = shellProblem(feature.parameters)
+  const count = feature.faces.length
+  return (
+    <aside className="panel properties-panel">
+      <div className="panel-header"><span>SHELL</span><button aria-label="Close properties" onClick={() => useDocumentStore.getState().select(null)}>×</button></div>
+      <PropertyIdentity feature={feature} />
+      {warning && <div className="dependency-warning">
+        <span>{warning.message}</span>
+        {thicknessRepair && (
+          <button type="button" onClick={() => updateParameters(feature.id, { thickness: thicknessRepair.value })}>
+            {thicknessRepair.label} ({formatLength(thicknessRepair.value, displayUnits)})
+          </button>
+        )}
+        {faceRepair && <button type="button" onClick={() => onReselectFaces(feature)}>{faceRepair.label}</button>}
+      </div>}
+      <div className="property-section">
+        <h3>Walls</h3>
+        <NumberField label="Thickness" value={feature.parameters.thickness} minAbs={0.001} binding={{ featureId: feature.id, key: 'thickness' }} formula={feature.formulas?.thickness} onCommit={(value) => updateParameters(feature.id, { thickness: value })} />
+      </div>
+      {problem && <div className="dependency-warning"><span>{problem} Nothing is hollowed until it is fixed.</span></div>}
+      <div className="property-section feature-info">
+        <span>Open faces</span><strong className="shell-face-count">{count ? `${count} face${count === 1 ? '' : 's'}` : 'None: hollow and closed'}</strong>
+        <span>Kernel</span><strong>OpenCascade B-rep</strong>
+      </div>
+      <button className="panel-action" onClick={() => onReselectFaces(feature)}>Pick faces again</button>
+      <button className="delete-feature" onClick={() => useDocumentStore.getState().removeSelected()}><Trash2 size={14} /> Delete shell</button>
+    </aside>
+  )
+}
+
 function FilletProperties({ feature, onReselectEdges }: { feature: Extract<Feature, { kind: 'fillet' }>; onReselectEdges: (feature: Extract<Feature, { kind: 'fillet' }>) => void }) {
   const updateParameters = useDocumentStore((state) => state.updateParameters)
   const warning = useFeatureDiagnosticsStore((state) => state.unresolved[feature.id])
@@ -596,7 +633,11 @@ function RevolveProperties({ feature }: { feature: Extract<Feature, { kind: 'rev
   )
 }
 
-export function PropertiesPanel({ feature, onReselectFilletEdges }: { feature: Feature | null; onReselectFilletEdges: (feature: Extract<Feature, { kind: 'fillet' }>) => void }) {
+export function PropertiesPanel({ feature, onReselectFilletEdges, onReselectShellFaces }: {
+  feature: Feature | null
+  onReselectFilletEdges: (feature: Extract<Feature, { kind: 'fillet' }>) => void
+  onReselectShellFaces: (feature: ShellFeature) => void
+}) {
   if (!feature) {
     return (
       <aside className="panel properties-panel no-selection">
@@ -611,5 +652,6 @@ export function PropertiesPanel({ feature, onReselectFilletEdges }: { feature: F
   if (feature.kind === 'fillet') return <FilletProperties feature={feature} onReselectEdges={onReselectFilletEdges} />
   if (feature.kind === 'hole') return <HoleProperties feature={feature} />
   if (feature.kind === 'pattern') return <PatternProperties feature={feature} />
+  if (feature.kind === 'shell') return <ShellProperties feature={feature} onReselectFaces={onReselectShellFaces} />
   return <PrimitiveProperties feature={feature} />
 }

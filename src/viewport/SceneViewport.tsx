@@ -5,12 +5,12 @@ import { TransformControls } from 'three/examples/jsm/controls/TransformControls
 import { useDocumentStore } from '../core/document-store'
 import { currentPlaneOffset } from '../core/face-anchor'
 import type { MeasurementState } from '../core/measurement'
-import type { FilletEdgeReference } from '../core/model'
+import type { FaceReference, FilletEdgeReference, Vec3 } from '../core/model'
 import { onCameraCommand } from './camera-commands'
 import { pickEdgeChain, worldEdgeSegments, type EdgeSegment } from './edge-references'
 import { EdgeHighlight } from './edge-highlight'
 import { ExactEdgeIndex } from './exact-edge-index'
-import { FaceHighlight } from './face-highlight'
+import { FaceHighlight, FaceSelection } from './face-highlight'
 import { MeasurementOverlay } from './measurement-overlay'
 import { MeasurementSnapper } from './measurement-snapping'
 import { edgeSourceOf } from './model-edges'
@@ -41,6 +41,10 @@ type ViewportProps = {
   filletEdges?: FilletEdgeReference[]
   onFilletEdgePick?: (pick: FilletEdgePick) => void
   onFilletEdgeMiss?: () => void
+  /** The solid whose faces are being picked for a shell. */
+  shellTargetId?: string | null
+  shellFaces?: FaceReference[]
+  onShellFacePick?: (face: Pick<FaceReference, 'point' | 'normal'>) => void
 }
 
 /**
@@ -51,13 +55,14 @@ type ViewportProps = {
  * it to the unit that does it.
  */
 export function SceneViewport(props: ViewportProps) {
-  const { pickSketchFace = false, measureMode = false, filletTargetId = null, filletEdges } = props
+  const { pickSketchFace = false, measureMode = false, filletTargetId = null, filletEdges, shellTargetId = null, shellFaces } = props
   const hostRef = useRef<HTMLDivElement>(null)
   // The scene lives for the component's lifetime; props reach it through this.
   const propsRef = useRef(props)
   propsRef.current = props
   const syncFilletEdgesRef = useRef<((edges: FilletEdgeReference[] | undefined) => void) | null>(null)
   const syncMeasurementModeRef = useRef<((active: boolean) => void) | null>(null)
+  const syncShellFacesRef = useRef<(() => void) | null>(null)
   const requestRenderRef = useRef<(() => void) | null>(null)
 
   useEffect(() => {
@@ -67,6 +72,10 @@ export function SceneViewport(props: ViewportProps) {
   useEffect(() => {
     syncMeasurementModeRef.current?.(measureMode)
   }, [measureMode])
+
+  useEffect(() => {
+    syncShellFacesRef.current?.()
+  }, [shellFaces, shellTargetId])
 
   // The viewport draws only on request. A change of mode or selection arrives
   // as new props, and may change what the scene shows.
@@ -78,7 +87,7 @@ export function SceneViewport(props: ViewportProps) {
     if (!hostRef.current) return
     const host = hostRef.current
     const current = () => propsRef.current
-    const inMode = () => Boolean(current().pickSketchFace || current().measureMode || current().filletTargetId)
+    const inMode = () => Boolean(current().pickSketchFace || current().measureMode || current().filletTargetId || current().shellTargetId)
 
     const controller = new ViewportController(host, {
       onCameraDistanceChange: (distance) => useViewportStore.getState().setCameraDistance(distance),
@@ -94,6 +103,7 @@ export function SceneViewport(props: ViewportProps) {
     )
     const snapper = new MeasurementSnapper(picker)
     const faceHighlight = new FaceHighlight(host)
+    const faceSelection = new FaceSelection(host)
 
     const transform = new TransformControls(controller.activeCamera(), canvas)
     transform.setMode('translate')
@@ -118,7 +128,11 @@ export function SceneViewport(props: ViewportProps) {
         snapper.clearCache()
       },
       canAttachGizmo: () => !inMode(),
-      onSolidsChanged: () => publishProjectedEdges(),
+      onSolidsChanged: () => {
+        publishProjectedEdges()
+        // An exact mesh replaces the preview, and the tint went with the old one.
+        syncShellFacesRef.current?.()
+      },
     })
     const pushPull = new PushPullGesture(host, canvas, orbit, picker, () => models.meshes.values())
     const hitAt = (event: PointerEvent) => picker.intersect(event, models.meshes.values())
@@ -152,6 +166,18 @@ export function SceneViewport(props: ViewportProps) {
       mesh.updateWorldMatrix(true, false)
       const segments = worldEdgeSegments(edgeSource.positions, mesh.matrixWorld)
       return pickEdgeChain(segments, edgeSource.edgeGroups, [event.clientX, event.clientY], picker.project, FILLET_EDGE_REACH_PX)
+    }
+
+    // Shell faces: those picked so far, tinted on the target, and the one under
+    // the pointer, highlighted as a sketch face would be.
+    syncShellFacesRef.current = () => {
+      const { shellTargetId: targetId, shellFaces: faces } = current()
+      faceSelection.show(targetId ? models.meshes.get(targetId) : undefined, targetId ? faces ?? [] : [])
+    }
+    function shellFaceAt(event: PointerEvent) {
+      const targetId = current().shellTargetId
+      const hit = hitAt(event).find((candidate) => candidate.object.userData.featureId === targetId)
+      return hit?.face ? hit : null
     }
 
     let faceHoverKey = ''
@@ -248,6 +274,12 @@ export function SceneViewport(props: ViewportProps) {
         overlay.showHoverMarker(picked?.edge.point ?? null)
         return
       }
+      if (current().shellTargetId) {
+        const hit = shellFaceAt(event)
+        if (hit) faceHighlight.show(hit, true)
+        else faceHighlight.clear()
+        return
+      }
       if (filletSelected.size || filletHover.length) {
         filletSelected.clear()
         filletHover = []
@@ -294,6 +326,8 @@ export function SceneViewport(props: ViewportProps) {
       } else if (pickSketchFace) {
         faceHighlight.clear()
         reportFaceHover(null)
+      } else if (current().shellTargetId) {
+        faceHighlight.clear()
       }
     }
 
@@ -313,6 +347,13 @@ export function SceneViewport(props: ViewportProps) {
           filletHover = []
           current().onFilletEdgePick?.({ featureId: filletTargetId, edge: picked.edge })
         } else current().onFilletEdgeMiss?.()
+        return
+      }
+      if (current().shellTargetId) {
+        const hit = shellFaceAt(event)
+        if (!hit?.face) return
+        const normal = hit.face.normal.clone().transformDirection(hit.object.matrixWorld).normalize()
+        current().onShellFacePick?.({ point: hit.point.toArray() as Vec3, normal: normal.toArray() as Vec3 })
         return
       }
       if (measureMode) {
@@ -363,6 +404,8 @@ export function SceneViewport(props: ViewportProps) {
       requestRenderRef.current = null
       syncMeasurementModeRef.current = null
       syncFilletEdgesRef.current = null
+      syncShellFacesRef.current = null
+      faceSelection.clear()
       for (const name of inputEvents) host.removeEventListener(name, requestRender)
       window.removeEventListener('keydown', requestRender)
       window.removeEventListener('keyup', requestRender)

@@ -11,6 +11,7 @@ import {
   createPatternFeature,
   createId,
   createRevolveFeature,
+  createShellFeature,
   isSolidFeature,
   type ExtrudeFeature,
   type Feature,
@@ -26,6 +27,7 @@ import { normalizeArc } from '../core/arc-geometry'
 import { anchorEdgeReferences } from '../core/edge-anchor'
 import { holeVolume } from '../core/hole'
 import { defaultPatternParameters } from '../core/pattern'
+import { faceReference } from '../core/shell'
 import { buildOperationChain } from './operation-chain'
 import { evaluateOperations } from './evaluate-chain'
 import { edgeGeometry } from './fillet-apply'
@@ -305,6 +307,79 @@ describe('golden parts', () => {
     const volume = volumeOf([...base, createFilletFeature(corners, 1, 3)])
 
     expect(volume).toBeCloseTo(20 * 20 * 10 - 4 * (9 - Math.PI * 9 / 4) * 10, 5)
+  })
+
+  describe('shells', () => {
+    /** An 80 × 50 × 30 box standing on the XY plane. */
+    function box(height = 30): Feature[] {
+      const sketch = sketchOf(rectangle([-40, -25], [40, 25]))
+      sketch.id = 'box-sketch'
+      const extrude = extrudeOf(sketch, height)
+      extrude.id = 'box'
+      return [sketch, extrude]
+    }
+    const openTop = (features: Feature[]) => faceReference([5, 5, 30], [0, 0, 1], features)
+
+    it('hollows a box with its top open', () => {
+      const base = box()
+      const part = inspect([...base, createShellFeature([openTop(base)], 1, 2)])
+
+      // The box less the inside: 76 × 46 across, 28 deep from the open top.
+      expect(part.volume).toBeCloseTo(80 * 50 * 30 - 76 * 46 * 28, 4)
+      // To 0.01 mm: OpenCascade stamps a shell with a 1e-3 tolerance, which
+      // the bounding box is inflated by. See the kernel behaviour notes.
+      part.bounds.max.forEach((value, axis) => expect(value).toBeCloseTo([40, 25, 30][axis], 2))
+    })
+
+    it('follows the open top when the box gets taller', () => {
+      const base = box()
+      const shell = createShellFeature([openTop(base)], 1, 2)
+      const taller = box(45)
+
+      expect(resolvedVolume([...taller, shell])).toBeCloseTo(80 * 50 * 45 - 76 * 46 * 43, 4)
+    })
+
+    it('shells a box with rounded upright corners, the inside rounded at the radius less the wall', () => {
+      const base = box()
+      const rounded = [...base, createFilletFeature(verticalEdgeReferences(base), 1, 3)]
+      const volume = volumeOf([...rounded, createShellFeature([openTop(base)], 1, 2)])
+
+      // A rounded rectangle is its box less (4 − π)r² at the corners. The
+      // inside's corners are R1, the outside's R3 moved in by the wall.
+      const outer = (80 * 50 - (4 - Math.PI) * 9) * 30
+      const inner = (76 * 46 - (4 - Math.PI) * 1) * 28
+      expect(volume).toBeCloseTo(outer - inner, 3)
+    })
+
+    it('reports the thickest wall that works, and leaves the box whole, when the wall is too thick', () => {
+      const base = box()
+      const shell = createShellFeature([openTop(base)], 1, 40)
+      const evaluation = evaluateOperations(buildOperationChain(shell, [...base, shell]))
+      try {
+        expect(measureVolume(evaluation.shape)).toBeCloseTo(80 * 50 * 30, 4)
+        expect(evaluation.unresolved).toHaveLength(1)
+        const [diagnostic] = evaluation.unresolved
+        expect(diagnostic.code).toBe('oversized-shell')
+        const repair = diagnostic.repairs.find((candidate) => candidate.kind === 'apply-thickness')
+        // The box is 50 wide, so a wall must leave room: under 25 mm.
+        expect(repair && 'value' in repair && repair.value).toBeGreaterThan(20)
+        expect(repair && 'value' in repair && repair.value).toBeLessThan(25)
+      } finally {
+        evaluation.release()
+      }
+    })
+
+    it('reports a face that is no longer there', () => {
+      const base = box()
+      const shell = createShellFeature([{ point: [5, 5, 60], normal: [0, 0, 1] }], 1, 2)
+      const evaluation = evaluateOperations(buildOperationChain(shell, [...base, shell]))
+      try {
+        expect(evaluation.unresolved.map((diagnostic) => diagnostic.code)).toEqual(['unresolved-face'])
+        expect(measureVolume(evaluation.shape)).toBeCloseTo(80 * 50 * 30, 4)
+      } finally {
+        evaluation.release()
+      }
+    })
   })
 
   it('chamfers a revolved rim, anchored to the profile corner that swept it', () => {

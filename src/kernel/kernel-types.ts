@@ -1,7 +1,7 @@
 import type { ProfileRegion } from '../core/sketch'
 import type { HolePlacement } from '../core/hole'
 import type { PatternTransform } from '../core/pattern'
-import type { FilletEdgeReference, HoleParameters, SketchPlane, Vec3 } from '../core/model'
+import type { FaceReference, FilletEdgeReference, HoleParameters, SketchPlane, Vec3 } from '../core/model'
 import type { DrawingViewId, OrthographicViewId, ProjectedView } from '../drawing/drawing-types'
 import type { FeatureDiagnostic } from '../core/diagnostics'
 
@@ -69,7 +69,16 @@ export type KernelPatternOperation = {
   transforms: PatternTransform[]
 }
 
-export type KernelOperation = KernelExtrudeOperation | KernelFilletOperation | KernelRevolveOperation | KernelHoleOperation | KernelPatternOperation
+export type KernelShellOperation = {
+  type: 'shell'
+  featureId: string
+  featureName: string
+  thickness: number
+  /** Where each face to open now is. Anchors are resolved before this point. */
+  faces: Pick<FaceReference, 'point' | 'normal'>[]
+}
+
+export type KernelOperation = KernelExtrudeOperation | KernelFilletOperation | KernelRevolveOperation | KernelHoleOperation | KernelPatternOperation | KernelShellOperation
 
 /** What the caller wants back once the feature chain has been evaluated. */
 export type KernelOutput = 'mesh' | KernelExportFormat | 'projection'

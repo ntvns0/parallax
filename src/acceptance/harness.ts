@@ -129,12 +129,32 @@ function isValidShape(shape: Shape3D) {
   return valid as boolean
 }
 
-/** Bounds are rounded to 0.001 mm, because `Bnd_Box` is inflated by shape tolerance, and `+ 0` turns -0 into 0. */
+/** Bounds are rounded to 0.001 mm, and `+ 0` turns -0 into 0. */
 const round = (value: number) => Math.round(value * 1000) / 1000 + 0
+
+/**
+ * The box round the geometry itself. Replicad's `boundingBox` is inflated by
+ * each shape's tolerance, and a shell's is 1e-3 mm whatever it is asked for,
+ * so that box would put a shelled part a micrometre outside its own walls.
+ */
+function exactBounds(shape: Shape3D): [number[], number[]] {
+  const oc = getOC() as unknown as Record<string, any> // eslint-disable-line @typescript-eslint/no-explicit-any
+  const box = new oc.Bnd_Box_1()
+  try {
+    oc.BRepBndLib.AddOptimal(shape.wrapped, box, false, false)
+    const [min, max] = [box.CornerMin(), box.CornerMax()]
+    const bounds: [number[], number[]] = [[min.X(), min.Y(), min.Z()], [max.X(), max.Y(), max.Z()]]
+    min.delete()
+    max.delete()
+    return bounds
+  } finally {
+    box.delete()
+  }
+}
 
 export function inspectPart(document: CadDocument): PartReport {
   return withSolid(document, (shape) => {
-    const [min, max] = shape.boundingBox.bounds
+    const [min, max] = exactBounds(shape)
     return {
       volume: measureVolume(shape),
       bodies: countSubShapes(shape, 'TopAbs_SOLID'),

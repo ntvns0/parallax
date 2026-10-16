@@ -91,7 +91,7 @@ Every part is checked three ways:
 | --- | --- | --- | --- | --- |
 | A1 | **Screw-mount L-bracket.** 40 mm wide, legs of 50 and 30 mm, 4 mm thick, R4 inside corner, 1 mm chamfer on outside edges, two countersunk M4 holes per leg | Face sketches, extrude, fillet, chamfer, Hole, linear pattern | Thickness 4 → 6, hole count 2 → 3 per leg | ✅ Passes all three checks. Its hole sketches sit on base planes, held at the leg faces by the thickness formula, not attached to the faces |
 | A2 | **Desk cable clip.** Screw-down base, a C-shaped Ø10 cable channel with 2 mm walls and a 7 mm snap opening, symmetric about a centreline, 15 mm deep, a countersunk M3 hole in each wing of the base, one the mirror of the other | Arcs, construction centreline, symmetric constraint, offset intent, Hole, feature mirror | Channel Ø10 → Ø14, wall 2 → 2.5 | ✅ Passes all three checks. It was one hole until the part was built: a single centred hole would go through the channel. The outside of the channel is authored as offset leaves it, concentric at the inner radius plus `wall`, not by calling the offset tool. Trim and sketch fillet are not needed by it |
-| A3 | **Electronics enclosure with lid.** 80 × 50 × 30 mm box, shelled to 2 mm with an open top, R3 vertical edges, four Ø6 standoffs with Ø4.2 heat-set insert holes in a rectangular pattern, a USB-C cutout in a side wall, and a separate lid body with a lip set by a `clearance = 0.2 mm` parameter and a pattern of vent slots | Shell, multiple bodies, rectangular pattern, side-face sketches, Hole, per-body export | Box 80 × 50 → 100 × 60, clearance 0.2 → 0.3 | Shell, multiple bodies, rectangular pattern, Hole, per-body export |
+| A3 | **Electronics enclosure with lid.** 80 × 50 × 30 mm box, shelled to 2 mm with an open top, R3 vertical edges, four Ø6 standoffs with Ø4.2 heat-set insert holes in a rectangular pattern, a USB-C cutout in a side wall, and a separate lid body with a lip set by a `clearance = 0.2 mm` parameter and a pattern of vent slots | Shell, multiple bodies, rectangular pattern, side-face sketches, Hole, per-body export | Box 80 × 50 → 100 × 60, clearance 0.2 → 0.3 | Multiple bodies, per-body export |
 | A4 | **Parametric knob.** A revolved body, a 6 mm D-shaft bore with the flat at 4.5 mm plus clearance, 24 grip grooves in a circular pattern, and a chamfered top edge | Revolve, construction axis, circular pattern, chamfer, formula-driven dimensions | Groove count 24 → 18, shaft 6 → 5 | ✅ Passes all three checks |
 
 Three of these are the same parts as the template IDs started on the
@@ -496,9 +496,39 @@ it needs one.
   - A2, the cable clip, now passes all three acceptance checks. Its channel
     wall is the concentric-plus-radius pair an offset records, and its edit
     widens the channel and thickens the wall together.
-- ⬜ **3.7 Shell** (A3). Pick the faces to remove, set the wall thickness, and
-  report the thickness that would work when OpenCascade refuses — the same
-  repair pattern as an oversized fillet.
+- ✅ **3.7 Shell** (A3). Select a solid, choose Shell, click the faces to
+  open, set the wall, and apply. Applying with no faces picked leaves the solid
+  hollow and closed.
+  - A Shell feature (schema 10) holds a wall thickness and the faces it opens.
+    Each face is a point and an outward normal where it was clicked. When the
+    face is an extrusion's end, it also carries the `extrudeCap` anchor that
+    face-attached sketches use, so the open top of a box follows the box when
+    it gets taller.
+  - `core/shell.ts` derives and resolves those anchors and holds the rules.
+    `kernel/shell-apply.ts` finds each face on the rebuilt solid by distance
+    and normal, and shells inward with `BRepOffsetAPI_MakeThickSolid`.
+  - A failed shell fails like an oversized fillet: the part builds without it.
+    - A wall too thick for the solid reports the thickest that works, found by
+      the same bisection, and the panel can apply it.
+    - A face that cannot be found asks for the faces to be picked again.
+  - Picked faces are tinted on the part while choosing, and the face under the
+    pointer is highlighted.
+  - Proof:
+    - `shell.test.ts` covers the anchors, following a taller box, faces it
+      cannot name, and the rules.
+    - `golden-parts.test.ts` hollows a box with its top open, follows the top
+      when the box grows, shells a box with R3 upright corners (inside corners
+      come out R1), reports the thickest wall that works for a 40 mm wall, and
+      reports a lost face. Every volume is worked out by hand.
+    - `e2e/viewport-interactions.spec.ts` picks a face of the plate, shells it
+      to 2 mm, and gets the exact solid with no warning.
+  - The acceptance harness now measures bounds with `BRepBndLib::AddOptimal`
+    and no shape tolerance, because a shell's tolerance inflates
+    `boundingBox`. See "Kernel behaviour notes".
+  - Follow-ups:
+    - Faces on the sides of an extrusion, and curved faces, have no anchor.
+      They hold while their face stays put.
+    - Walls are all one thickness, and always grow inward.
 - ⬜ **3.8 Multiple bodies** (A3). New-body extrudes and revolves start a new body
   instead of replacing the current one. Bodies get a list in the feature tree,
   and each later feature targets a body. This turns the linear single-body
@@ -649,7 +679,7 @@ Status: ⬜ Planned
 - 🚧 Manufacturing-aware Hole feature: simple, counterbored, and countersunk forms, through-all and blind, placed from sketch points, sized from presets, built as exact booleans, and kept as editable intent. Thread metadata and view callouts read from the feature remain
 - ✅ Exact selectable-edge fillet and equal-distance chamfer are integrated, and an oversized radius or distance is reported with the largest one that works instead of failing the part
 - 🔬 Mitered corner fillets: fix OpenCascade 2-edge sharp fillet intersections without falling back to spherical blends or edge-by-edge mutations
-- ⬜ Shell and draft
+- 🚧 Shell is in: inward, one wall thickness, any faces opened. Draft remains
 - ✅ Linear, rectangular, circular, and mirror patterns of features (along world axes)
 - ⬜ Sweep and loft
 - ⬜ Multiple bodies and body folders
@@ -890,6 +920,13 @@ Facts about OpenCascade through Replicad that cost real effort to establish. Rec
   constraint the solver reports, repeating until none is reported. Also:
   `p2l_distance` is unsigned, so a line held at a distance can settle on
   either side.
+- **A shell's bounding box is a micrometre too big.**
+  `BRepOffsetAPI_MakeThickSolid` stamps its result with a 1e-3 mm tolerance,
+  whatever tolerance it is given, and `Bnd_Box` grows by the shape's
+  tolerance. So `boundingBox` puts an 80 mm shelled box at 80.002 mm. The
+  geometry itself is exact: `BRepBndLib::AddOptimal(shape, box, false, false)`
+  reports 80. When the wall leaves no room inside, the builder throws a bare
+  status code; it did not hand back a bad solid in any case tried.
 - **Kernel-level tests run under jsdom** (`kernel/arc-profile.test.ts`, `fillet-apply.test.ts`, `fillet-limit.test.ts`). Load the wasm with `readFileSync` and a path resolved from `process.cwd()`: `import.meta.url` is not a file URL in that environment, and the shared test setup assumes a DOM, so the `node` environment is not available.
 
 ## Major technical risks
@@ -905,7 +942,7 @@ Faces and edges may change identity when an upstream feature recomputes. Solving
 
 Both are pure functions of the document — no solid required — which is what lets migrations backfill saved parts instead of demanding a rebuild, and what makes them testable without WebAssembly. Geometric fingerprinting remains the authority downstream: an anchor is a *prediction*, matched against the real solid, so a wrong one fails to match rather than silently attaching to the wrong topology.
 
-What remains is breadth, not method. Faces referenced by anything other than sketch attachment, edges produced by fillets rather than sweeps, and vertices have no anchors yet, and the seven reference mechanisms still carry six independent tolerance constants.
+What remains is breadth, not method. Faces other than extrusion ends (a shell's open faces reuse the sketch anchor), edges produced by fillets rather than sweeps, and vertices have no anchors yet, and the seven reference mechanisms still carry six independent tolerance constants.
 
 This is *part* of the critical path for performance, but less of it than previously recorded here. Prefix caching (Milestone 4) turned out not to need naming at all, and now covers editing the end of a history. What naming still blocks is recomputing only the features actually affected by a change in the *middle* of a history: without references that survive a recompute, everything after the edit has to be re-run.
 

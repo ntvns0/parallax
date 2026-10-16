@@ -84,6 +84,9 @@ export function describeModelParameters(
         })
         break
       }
+      case 'shell':
+        rows.push({ label: `${feature.name} wall`, value: formatValue(feature.parameters.thickness) })
+        break
       case 'pattern': {
         const seeds = patternSeeds(feature, features).map((seed) => seed.name).join(', ')
         rows.push({ label: `${feature.name}${seeds ? ` (${seeds})` : ''}`, value: describePattern(feature.parameters, formatValue) })

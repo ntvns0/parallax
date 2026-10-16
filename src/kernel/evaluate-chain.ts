@@ -6,6 +6,7 @@ import { arcAlong, type ClosedProfile, type ProfileRegion } from '../core/sketch
 import { arcMidPoint } from '../core/arc-geometry'
 import { extrudeExtent } from './extrude-extent'
 import { applyFilletGroup } from './fillet-apply'
+import { applyShell } from './shell-apply'
 import { operationChainCacheKey } from './operation-chain'
 import type {
   KernelExtrudeOperation,
@@ -295,6 +296,18 @@ function applyOperations(
       // Every fillet in the group may have been skipped, in which case the
       // solid passed straight through and must not be freed.
       if (shape !== unfilleted) release(unfilleted)
+      onPrefix?.(index, shape, [...unresolved])
+      continue
+    }
+
+    if (operation.type === 'shell') {
+      if (!shape) continue
+      const unshelled: Shape3D = shape
+      const result = applyShell(unshelled, operation)
+      unresolved.push(...result.unresolved)
+      shape = result.shape
+      // A shell that could not be made passes the solid through untouched.
+      if (shape !== unshelled) release(unshelled)
       onPrefix?.(index, shape, [...unresolved])
       continue
     }

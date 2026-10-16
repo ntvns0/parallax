@@ -17,7 +17,8 @@ import {
 import { prepareFilletFeature, useDocumentStore } from '../core/document-store'
 import { anchorEdgeReferences } from '../core/edge-anchor'
 import { logDiagnostic } from '../core/diagnostics'
-import { isSolidFeature, validateCadDocument, type CadDocument, type Feature, type FilletBlend, type SolidFeature, type FilletCornerStyle, type FilletEdgeReference } from '../core/model'
+import { createShellFeature, isSolidFeature, validateCadDocument, type CadDocument, type FaceReference, type Feature, type FilletBlend, type ShellFeature, type SolidFeature, type FilletCornerStyle, type FilletEdgeReference } from '../core/model'
+import { faceReference } from '../core/shell'
 import { formatLength, formatLengthInput, parseLengthInput, sketchSnapIncrement, unitLabel } from '../core/units'
 import { cachedExactMesh, preflightExactFillet, useKernelStore } from '../kernel/exact-kernel'
 import { expandConnectedFilletEdges, extractMeshEdges } from '../kernel/fillet-edge-reference'
@@ -25,7 +26,7 @@ import { SketchEditor } from '../sketcher/SketchEditor'
 import { SceneViewport, type SketchFacePickResult } from '../viewport/SceneViewport'
 import { useViewportStore } from '../viewport/viewport-store'
 import { FeaturePanel } from './FeatureTree'
-import { ChamferFeatureIcon, FilletFeatureIcon } from './icons'
+import { ChamferFeatureIcon, FilletFeatureIcon, ShellFeatureIcon } from './icons'
 import { INITIAL_INTERACTION_MODE, interactionModeReducer } from './interaction-mode'
 import { CommandPalette, HelpDialog, MeasurementPanel, PlanePicker, ProjectMenu, SettingsDialog } from './ProjectDialogs'
 import { PropertiesPanel } from './PropertyPanel'
@@ -170,6 +171,41 @@ export function App() {
     }
   }
 
+  function startShell(target: SolidFeature) {
+    dispatch({ type: 'START_SHELL', targetId: target.id, initialThicknessDraft: formatLengthInput(2, displayUnits) })
+    setNotice(null)
+  }
+
+  function startShellReselection(feature: ShellFeature) {
+    // As with a fillet, the faces are picked on the mesh the shell shows, which
+    // is the solid before it whenever the shell could not be made.
+    dispatch({ type: 'START_SHELL', targetId: feature.id, editingFeatureId: feature.id, initialThicknessDraft: formatLengthInput(feature.parameters.thickness, displayUnits) })
+    setNotice(null)
+  }
+
+  function applyShell() {
+    if (mode.kind !== 'shell-selection') return
+    const thickness = parseLengthInput(mode.thicknessDraft, displayUnits)
+    if (thickness === null || thickness < 0.001) {
+      dispatch({ type: 'SET_SHELL_ERROR', error: `Enter a wall thickness of at least ${formatLength(0.001, displayUnits)}.` })
+      return
+    }
+    const store = useDocumentStore.getState()
+    const features = store.document.features
+    const editing = mode.editingFeatureId ? features.findIndex((candidate) => candidate.id === mode.editingFeatureId) : -1
+    // Anchors may only name what comes before the shell.
+    const earlier = editing >= 0 ? features.slice(0, editing) : features
+    const faces: FaceReference[] = mode.faces.map((face) => faceReference(face.point, face.normal, earlier))
+    if (editing >= 0) {
+      store.updateFeature(features[editing].id, { faces, parameters: { thickness } })
+      setNotice({ tone: 'success', message: `${features[editing].name} now opens ${faces.length} face${faces.length === 1 ? '' : 's'}.` })
+    } else {
+      store.addShell(createShellFeature(faces, features.filter((feature) => feature.kind === 'shell').length + 1, thickness))
+      setNotice({ tone: 'success', message: `Shelled to ${formatLength(thickness, displayUnits)} walls, open at ${faces.length} face${faces.length === 1 ? '' : 's'}.` })
+    }
+    dispatch({ type: 'CANCEL' })
+  }
+
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
       const editing = event.target instanceof HTMLInputElement
@@ -309,6 +345,9 @@ export function App() {
             filletEdges={mode.kind === 'fillet-selection' ? mode.edges : undefined}
             onFilletEdgePick={({ edge }) => addFilletEdge(edge)}
             onFilletEdgeMiss={() => dispatch({ type: 'SET_FILLET_STATUS', status: { applying: false, error: 'No exact edge was found near that point. Move closer to an edge and try again.' } })}
+            shellTargetId={mode.kind === 'shell-selection' ? mode.targetId : null}
+            shellFaces={mode.kind === 'shell-selection' ? mode.faces : undefined}
+            onShellFacePick={(face) => dispatch({ type: 'TOGGLE_SHELL_FACE', face })}
           />
           {!activeSketchId && mode.kind === 'idle' && (
             <ModelToolbar
@@ -320,6 +359,7 @@ export function App() {
                 if (active) dispatch({ type: 'TOGGLE_MEASUREMENT' })
               }}
               onStartFillet={startFillet}
+              onStartShell={startShell}
             />
           )}
           {measureActive && (
@@ -332,6 +372,7 @@ export function App() {
                 if (!active) dispatch({ type: 'CANCEL' })
               }}
               onStartFillet={startFillet}
+              onStartShell={startShell}
             />
           )}
           {/*
@@ -394,10 +435,33 @@ export function App() {
               <button disabled={mode.status.applying} onClick={() => dispatch({ type: 'CANCEL' })}>Cancel</button>
             </div>
           )}
+          {mode.kind === 'shell-selection' && (
+            <div className="face-pick-banner fillet-pick-banner" role="status">
+              <ShellFeatureIcon />
+              <span>
+                <strong>{mode.editingFeatureId ? 'PICK SHELL FACES AGAIN' : 'SELECT FACES TO OPEN'}</strong>
+                {mode.error ?? (mode.faces.length
+                  ? `${mode.faces.length} face${mode.faces.length === 1 ? '' : 's'} open · set the wall and apply`
+                  : 'Click the faces to remove · apply with none for a closed, hollow solid')}
+              </span>
+              <label className="fillet-radius-field">
+                <span>Wall</span>
+                <input
+                  aria-label="Shell wall thickness"
+                  value={mode.thicknessDraft}
+                  onChange={(event) => dispatch({ type: 'SET_SHELL_THICKNESS_DRAFT', draft: event.target.value })}
+                  onKeyDown={(event) => { if (event.key === 'Enter') applyShell() }}
+                />
+                <em>{unitLabel(displayUnits)}</em>
+              </label>
+              <button onClick={applyShell}>{mode.editingFeatureId ? 'Reattach' : 'Apply'}</button>
+              <button onClick={() => dispatch({ type: 'CANCEL' })}>Cancel</button>
+            </div>
+          )}
           {measureActive && <MeasurementPanel measurement={measurement} onClose={() => dispatch({ type: 'CANCEL' })} />}
           {activeSketchId && <SketchEditor sketchId={activeSketchId} />}
         </section>
-        <PropertiesPanel feature={selectedFeature} onReselectFilletEdges={startFilletReselection} />
+        <PropertiesPanel feature={selectedFeature} onReselectFilletEdges={startFilletReselection} onReselectShellFaces={startShellReselection} />
       </section>
 
       <footer className="statusbar">

@@ -11,6 +11,13 @@
 /** Re-deriving persisted edge and face anchors from parametric geometry. */
 export const ANCHOR_MATCH_DISTANCE_MM = 0.05
 
+/**
+ * Matching a picked face to a face of the rebuilt solid. A pick lands on the
+ * tessellation, which on a curved face sits up to the mesh's deflection off
+ * the true surface, so this is looser than the anchor tolerance.
+ */
+export const FACE_REFERENCE_DISTANCE_MM = 0.1
+
 /** Attributing tessellated face samples for selection highlighting only. */
 export const FACE_OWNERSHIP_DISTANCE_MM = 0.08
 

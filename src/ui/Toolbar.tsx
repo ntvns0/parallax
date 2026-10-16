@@ -10,7 +10,7 @@ import { getProfileRegions } from '../core/sketch'
 import { isPatternable } from '../core/pattern'
 import { defaultExtrudeDistance, materialDepthUnderSketch, FALLBACK_EXTRUDE_DISTANCE_MM } from '../core/extrude-defaults'
 import { cachedExactMesh } from '../kernel/exact-kernel'
-import { BoxFeatureIcon, ChamferFeatureIcon, CylinderFeatureIcon, ExtrudeFeatureIcon, FilletFeatureIcon, HoleFeatureIcon, PatternFeatureIcon, RevolveFeatureIcon, SketchFeatureIcon, SphereFeatureIcon } from './icons'
+import { BoxFeatureIcon, ChamferFeatureIcon, CylinderFeatureIcon, ExtrudeFeatureIcon, FilletFeatureIcon, HoleFeatureIcon, PatternFeatureIcon, RevolveFeatureIcon, ShellFeatureIcon, SketchFeatureIcon, SphereFeatureIcon } from './icons'
 
 export function IconButton({ label, disabled, active, onClick, children }: {
   label: string
@@ -54,6 +54,7 @@ export function ModelToolbar({
   measureActive,
   onMeasureChange,
   onStartFillet,
+  onStartShell,
 }: {
   onAdd: (kind: FeatureKind) => void
   selectedFeature: Feature | null
@@ -61,6 +62,7 @@ export function ModelToolbar({
   measureActive: boolean
   onMeasureChange: (active: boolean) => void
   onStartFillet: (feature: SolidFeature, blend: FilletBlend) => void
+  onStartShell: (feature: SolidFeature) => void
 }) {
   const canExtrude = selectedFeature?.kind === 'sketch' && getProfileRegions(selectedFeature).length > 0
   const canFillet = selectedFeature !== null && isSolidFeature(selectedFeature)
@@ -89,6 +91,9 @@ export function ModelToolbar({
       <IconButton label={canFillet ? 'Chamfer selected edges' : 'Select an exact solid to chamfer edges'} disabled={!canFillet} onClick={() => {
         if (selectedFeature && isSolidFeature(selectedFeature)) onStartFillet(selectedFeature, 'chamfer')
       }}><ChamferFeatureIcon /></IconButton>
+      <IconButton label={canFillet ? 'Shell selected solid' : 'Select an exact solid to shell'} disabled={!canFillet} onClick={() => {
+        if (selectedFeature && isSolidFeature(selectedFeature)) onStartShell(selectedFeature)
+      }}><ShellFeatureIcon /></IconButton>
       <IconButton label={canHole ? 'Hole at sketch points' : 'Select a sketch with points, on or above a solid, to drill holes'} disabled={!canHole} onClick={() => {
         if (selectedFeature?.kind === 'sketch') useDocumentStore.getState().addHoles(selectedFeature.id)
       }}><HoleFeatureIcon /></IconButton>

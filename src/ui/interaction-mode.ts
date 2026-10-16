@@ -1,4 +1,5 @@
-import type { FilletBlend, FilletEdgeReference, FilletCornerStyle } from '../core/model'
+import type { FaceReference, FilletBlend, FilletEdgeReference, FilletCornerStyle } from '../core/model'
+import { sameFace } from '../core/shell'
 import type { MeasurementState } from '../core/measurement'
 import type { SketchFacePickResult } from '../viewport/SceneViewport'
 
@@ -18,6 +19,15 @@ export type InteractionMode =
       radiusDraft: string
       status: { applying: boolean; error: string | null }
     }
+  | {
+      kind: 'shell-selection'
+      targetId: string
+      editingFeatureId?: string
+      /** As picked. Anchors are derived when the shell is applied. */
+      faces: FaceReference[]
+      thicknessDraft: string
+      error: string | null
+    }
   | { kind: 'measurement'; measurement: MeasurementState }
 
 export const INITIAL_INTERACTION_MODE: InteractionMode = { kind: 'idle' }
@@ -35,6 +45,10 @@ export type InteractionAction =
   | { type: 'SET_FILLET_CORNER_STYLE'; style: FilletCornerStyle }
   | { type: 'SET_FILLET_RADIUS_DRAFT'; draft: string }
   | { type: 'SET_FILLET_STATUS'; status: { applying: boolean; error: string | null } }
+  | { type: 'START_SHELL'; targetId: string; initialThicknessDraft: string; editingFeatureId?: string }
+  | { type: 'TOGGLE_SHELL_FACE'; face: FaceReference }
+  | { type: 'SET_SHELL_THICKNESS_DRAFT'; draft: string }
+  | { type: 'SET_SHELL_ERROR'; error: string | null }
   | { type: 'TOGGLE_MEASUREMENT' }
   | { type: 'SET_MEASUREMENT'; measurement: MeasurementState }
 
@@ -130,6 +144,34 @@ export function interactionModeReducer(state: InteractionMode, action: Interacti
     case 'SET_FILLET_STATUS':
       if (state.kind !== 'fillet-selection') return state
       return { ...state, status: action.status }
+
+    case 'START_SHELL':
+      return {
+        kind: 'shell-selection',
+        targetId: action.targetId,
+        ...(action.editingFeatureId ? { editingFeatureId: action.editingFeatureId } : {}),
+        faces: [],
+        thicknessDraft: action.initialThicknessDraft,
+        error: null,
+      }
+
+    case 'TOGGLE_SHELL_FACE': {
+      if (state.kind !== 'shell-selection') return state
+      const picked = state.faces.some((face) => sameFace(face, action.face))
+      return {
+        ...state,
+        faces: picked ? state.faces.filter((face) => !sameFace(face, action.face)) : [...state.faces, action.face],
+        error: null,
+      }
+    }
+
+    case 'SET_SHELL_THICKNESS_DRAFT':
+      if (state.kind !== 'shell-selection') return state
+      return { ...state, thicknessDraft: action.draft }
+
+    case 'SET_SHELL_ERROR':
+      if (state.kind !== 'shell-selection') return state
+      return { ...state, error: action.error }
 
     case 'TOGGLE_MEASUREMENT':
       if (state.kind === 'measurement') {

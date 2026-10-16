@@ -11,7 +11,7 @@ export type FeatureDiagnostic = {
   featureId: string
   featureName: string
   severity: 'warning' | 'error'
-  code: 'unresolved-edge' | 'unresolved-face' | 'constraint-conflict' | 'oversized-fillet' | 'invalid-formula' | 'open-profile' | 'missing-revolve-axis'
+  code: 'unresolved-edge' | 'unresolved-face' | 'constraint-conflict' | 'oversized-fillet' | 'oversized-shell' | 'invalid-formula' | 'open-profile' | 'missing-revolve-axis'
   reason: 'missing' | 'moved' | 'invalid' | 'conflicting' | 'limit-exceeded'
   subject: { kind: 'edge' | 'face' | 'constraint' | 'parameter' | 'feature'; id?: string; label: string }
   message: string
@@ -26,6 +26,8 @@ export type DiagnosticRepair =
   | { kind: 'restore-feature'; label: string; featureId: string }
   | { kind: 'edit-constraint'; label: string; constraintId: string }
   | { kind: 'apply-radius'; label: string; value: number }
+  /** Set a shell's walls to a thickness known to build. */
+  | { kind: 'apply-thickness'; label: string; value: number }
   /** Drop a formula that no longer evaluates, keeping the last value it produced. */
   | { kind: 'clear-formula'; label: string; featureId: string; key: string }
   /** Open a sketch for editing, to close a profile that came apart. */

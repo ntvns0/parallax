@@ -78,7 +78,7 @@ describe('driving a dimension from a field', () => {
   it('binds a formula typed with a leading =, and shows the value it evaluates to', () => {
     useDocumentStore.getState().addParameter({ name: 'plate', expression: '15' })
     const box = selectedBox()
-    render(React.createElement(PropertiesPanel, { feature: useDocumentStore.getState().document.features[0], onReselectFilletEdges: () => {} }))
+    render(React.createElement(PropertiesPanel, { feature: useDocumentStore.getState().document.features[0], onReselectFilletEdges: () => {}, onReselectShellFaces: () => {} }))
 
     const width = screen.getByLabelText('Width')
     fireEvent.change(width, { target: { value: '=plate * 2' } })
@@ -91,7 +91,7 @@ describe('driving a dimension from a field', () => {
 
   it('rejects a formula that names nothing, leaving the dimension as it was', () => {
     const box = selectedBox()
-    render(React.createElement(PropertiesPanel, { feature: useDocumentStore.getState().document.features[0], onReselectFilletEdges: () => {} }))
+    render(React.createElement(PropertiesPanel, { feature: useDocumentStore.getState().document.features[0], onReselectFilletEdges: () => {}, onReselectShellFaces: () => {} }))
 
     const width = screen.getByLabelText('Width')
     fireEvent.change(width, { target: { value: '=missing / 2' } })
@@ -109,7 +109,7 @@ describe('driving a dimension from a field', () => {
     useDocumentStore.getState().setFeatureFormula(box.id, 'width', 'plate * 2')
     useDocumentStore.getState().removeParameter(parameterId)
 
-    render(React.createElement(PropertiesPanel, { feature: useDocumentStore.getState().document.features[0], onReselectFilletEdges: () => {} }))
+    render(React.createElement(PropertiesPanel, { feature: useDocumentStore.getState().document.features[0], onReselectFilletEdges: () => {}, onReselectShellFaces: () => {} }))
     expect(screen.getByText(/no parameter named "plate"/)).toBeDefined()
 
     fireEvent.click(screen.getByRole('button', { name: /Remove the formula, keep the value/ }))

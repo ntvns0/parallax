@@ -212,6 +212,7 @@ const BINDABLE_FIELDS: Record<FeatureKind, BindableField[]> = {
       validate: (value) => (value > 0 && value < 180 ? null : 'A countersink angle must be between 0° and 180°.'),
     },
   ],
+  shell: [{ key: 'thickness', label: 'Wall thickness', validate: positive('A wall thickness') }],
 }
 
 export function bindableFields(kind: FeatureKind): BindableField[] {

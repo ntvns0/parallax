@@ -66,6 +66,7 @@ function featureSignature(feature: Feature): string {
   }
   if (feature.kind === 'hole') return `${base}:${feature.sketchId}`
   if (feature.kind === 'pattern') return `${base}:${feature.featureIds.join('+')}`
+  if (feature.kind === 'shell') return `${base}:${JSON.stringify(feature.faces)}`
   return base
 }
 

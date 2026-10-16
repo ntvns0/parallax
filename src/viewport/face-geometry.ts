@@ -21,8 +21,19 @@ const PLANE_TOLERANCE = 0.02
 export function coplanarTriangles(geometry: THREE.BufferGeometry, normal: THREE.Vector3, vertexIndex: number): Triangle[] {
   const positions = geometry.getAttribute('position')
   if (!positions) return []
+  return planeTriangles(geometry, normal, new THREE.Vector3().fromBufferAttribute(positions, vertexIndex))
+}
+
+/**
+ * Every triangle of `geometry` facing along `normal` in the plane through
+ * `point`, in the geometry's own space. Triangles facing the other way are
+ * left out, so the far wall of a thin part is not taken for this face.
+ */
+export function planeTriangles(geometry: THREE.BufferGeometry, normal: THREE.Vector3, point: THREE.Vector3, facing: 'either' | 'same' = 'either'): Triangle[] {
+  const positions = geometry.getAttribute('position')
+  if (!positions) return []
   const targetNormal = normal.clone().normalize()
-  const planeConstant = targetNormal.dot(new THREE.Vector3().fromBufferAttribute(positions, vertexIndex))
+  const planeConstant = targetNormal.dot(point)
   const index = geometry.index
   const triangleCount = index ? index.count / 3 : positions.count / 3
   const triangles: Triangle[] = []
@@ -40,7 +51,8 @@ export function coplanarTriangles(geometry: THREE.BufferGeometry, normal: THREE.
     edgeA.subVectors(b, a)
     edgeB.subVectors(c, a)
     triangleNormal.crossVectors(edgeA, edgeB).normalize()
-    if (Math.abs(triangleNormal.dot(targetNormal)) > 0.9999 && onPlane(a) && onPlane(b) && onPlane(c)) {
+    const alignment = triangleNormal.dot(targetNormal)
+    if ((facing === 'same' ? alignment : Math.abs(alignment)) > 0.9999 && onPlane(a) && onPlane(b) && onPlane(c)) {
       triangles.push([a.clone(), b.clone(), c.clone()])
     }
   }

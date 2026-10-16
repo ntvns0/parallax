@@ -108,6 +108,16 @@ export function RevolveFeatureIcon(props: SVGProps<SVGSVGElement>) {
   )
 }
 
+export function ShellFeatureIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" {...props}>
+      <path d="M3 7v12h18V7" />
+      <path d="M6.5 7v8.5h11V7" />
+      <path d="M3 7h3.5M17.5 7H21" />
+    </svg>
+  )
+}
+
 const KIND_ICONS = {
   box: BoxFeatureIcon,
   cylinder: CylinderFeatureIcon,
@@ -118,6 +128,7 @@ const KIND_ICONS = {
   fillet: FilletFeatureIcon,
   hole: HoleFeatureIcon,
   pattern: PatternFeatureIcon,
+  shell: ShellFeatureIcon,
 } satisfies Record<Feature['kind'], typeof BoxFeatureIcon>
 
 /** The icon for a feature: its kind's, except that a chamfer is not drawn as a fillet, nor a mirror as a pattern. */

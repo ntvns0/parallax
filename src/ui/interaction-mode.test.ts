@@ -80,4 +80,17 @@ describe('interactionModeReducer', () => {
     })
     expect(state).toMatchObject({ kind: 'fillet-selection', blend: 'chamfer' })
   })
+
+  it('picks and unpicks faces to open a shell', () => {
+    let state = interactionModeReducer(INITIAL_INTERACTION_MODE, { type: 'START_SHELL', targetId: 'extrude-1', initialThicknessDraft: '2' })
+    expect(state).toMatchObject({ kind: 'shell-selection', targetId: 'extrude-1', faces: [], thicknessDraft: '2' })
+    state = interactionModeReducer(state, { type: 'TOGGLE_SHELL_FACE', face: { point: [0, 0, 30], normal: [0, 0, 1] } })
+    state = interactionModeReducer(state, { type: 'TOGGLE_SHELL_FACE', face: { point: [40, 0, 15], normal: [1, 0, 0] } })
+    expect(state.kind === 'shell-selection' && state.faces).toHaveLength(2)
+    // Another click elsewhere on the top face takes it back off.
+    state = interactionModeReducer(state, { type: 'TOGGLE_SHELL_FACE', face: { point: [8, 5, 30], normal: [0, 0, 1] } })
+    expect(state.kind === 'shell-selection' && state.faces).toEqual([{ point: [40, 0, 15], normal: [1, 0, 0] }])
+    state = interactionModeReducer(state, { type: 'SET_SHELL_THICKNESS_DRAFT', draft: '1.5' })
+    expect(state).toMatchObject({ thicknessDraft: '1.5' })
+  })
 })

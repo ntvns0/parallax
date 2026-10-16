@@ -13,6 +13,7 @@ import {
   type Feature,
   type FeatureKind,
   type FeatureParameterPatch,
+  type ShellFeature,
   type FilletEdgeReference,
   type FilletFeature,
   type SketchConstraint,
@@ -124,6 +125,7 @@ type EditorState = {
   extrudeSketch: (sketchId: string, distance?: number) => void
   revolveSketch: (sketchId: string, angle?: number) => void
   addFillet: (feature: FilletFeature) => void
+  addShell: (feature: ShellFeature) => void
   /** Drill a hole at each point of a sketch into the solid before it. */
   addHoles: (sketchId: string) => void
   /** Copy a feature in a row, which the property panel can turn into a grid, a ring, or a mirror image. */
@@ -664,6 +666,9 @@ export const useDocumentStore = create<EditorState>((set, get) => ({
       if (!feature.edges.length) return state
       return mutate(state, (document) => document.features.push(feature), feature.id)
     }),
+
+  addShell: (feature) =>
+    set((state) => mutate(state, (document) => document.features.push(feature), feature.id)),
 
   addHoles: (sketchId) =>
     set((state) => {

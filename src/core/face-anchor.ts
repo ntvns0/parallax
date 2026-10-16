@@ -1,5 +1,5 @@
 import { extrudeSweepRange } from './extrude-direction'
-import type { ExtrudeFeature, Feature, FaceAnchor, SketchFeature } from './model'
+import type { ExtrudeFeature, Feature, FaceAnchor, SketchFeature, SketchPlane } from './model'
 import { ANCHOR_MATCH_DISTANCE_MM } from './tolerance-policy'
 
 /**
@@ -45,6 +45,18 @@ export function resolveFaceOffset(anchor: FaceAnchor, features: Feature[], seen 
 
   const range = extrudeSweepRange(extrude, sketch, currentPlaneOffset(sketch, features, seen))
   return range[anchor.depth]
+}
+
+/**
+ * The plane a face anchor names and where along its normal it currently sits,
+ * or null when it no longer resolves.
+ */
+export function resolveFacePlane(anchor: FaceAnchor, features: Feature[]): { plane: SketchPlane; offset: number } | null {
+  const extrude = features.find((candidate) => candidate.kind === 'extrude' && candidate.id === anchor.featureId)
+  const sketch = extrude?.kind === 'extrude' ? features.find((candidate) => candidate.id === extrude.sketchId) : undefined
+  const offset = resolveFaceOffset(anchor, features)
+  if (sketch?.kind !== 'sketch' || offset === null) return null
+  return { plane: sketch.plane, offset }
 }
 
 /**

@@ -146,6 +146,32 @@ test('chamfers a picked edge of the part', async ({ page }) => {
   await expect(page.locator('.properties-panel .panel-header')).toContainText('CHAMFER')
 })
 
+test('shells the part open at a picked face', async ({ page }) => {
+  await plate(page)
+  await page.getByTitle('Home view (Isometric Z-up)').click()
+  await page.getByTitle('Shell selected solid').first().click()
+  const banner = page.locator('.fillet-pick-banner')
+  await expect(banner).toContainText('SELECT FACES TO OPEN')
+
+  const at = await findViewportPoint(page, async () => await viewport(page).getAttribute('data-face-highlight') === 'supported')
+  await page.mouse.click(at.x, at.y)
+  await expect(banner).toContainText('1 face open')
+  await expect(viewport(page)).toHaveAttribute('data-picked-faces', '1')
+
+  await page.getByLabel('Shell wall thickness').fill('2')
+  await banner.getByRole('button', { name: 'Apply' }).click()
+  await expect(banner).toBeHidden()
+  await expect.poll(async () => (await readDocument(page)).features.find((feature) => feature.kind === 'shell')).toMatchObject({
+    name: 'Shell 1', parameters: { thickness: 2 },
+  })
+  const shell = (await readDocument(page)).features.find((feature) => feature.kind === 'shell')!
+  expect(shell.kind === 'shell' && shell.faces).toHaveLength(1)
+  await expect(viewport(page)).toHaveAttribute('data-exact-features', new RegExp(shell.id), { timeout: 60_000 })
+  await expect(page.locator('.properties-panel .panel-header')).toContainText('SHELL')
+  await expect(page.locator('.shell-face-count')).toHaveText('1 face')
+  await expect(page.locator('.properties-panel .dependency-warning')).toHaveCount(0)
+})
+
 test('an orthographic view draws and picks the part, and is remembered', async ({ page }) => {
   const extrudeId = await plate(page)
   await page.getByTitle('Home view (Isometric Z-up)').click()

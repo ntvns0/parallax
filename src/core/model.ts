@@ -163,6 +163,23 @@ export type FaceAnchor = {
   depth: 0 | 1
 }
 
+/**
+ * A face picked on the solid, for a feature that acts on faces rather than
+ * edges. Like an edge reference, the geometry is a fingerprint taken where the
+ * face was clicked, and the anchor, when one could be derived, is what keeps
+ * it on the right face after an edit.
+ */
+export type FaceReference = {
+  /** A point on the face, where it was picked. */
+  point: Vec3
+  /** The face's outward normal at that point. */
+  normal: Vec3
+  anchor?: FaceAnchor
+}
+
+/** How a shell hollows the solid: inward from its outside, leaving walls this thick. */
+export type ShellParameters = { thickness: number }
+
 export type SketchFaceAttachment = {
   type: 'face'
   featureId: string
@@ -180,7 +197,7 @@ export type SketchFaceAttachment = {
   anchor?: FaceAnchor
 }
 
-export type FeatureParameters = BoxParameters | CylinderParameters | SphereParameters | SketchParameters | ExtrudeParameters | FilletParameters | RevolveParameters
+export type FeatureParameters = BoxParameters | CylinderParameters | SphereParameters | SketchParameters | ExtrudeParameters | FilletParameters | RevolveParameters | HoleParameters | PatternParameters | ShellParameters
 
 /**
  * A partial update to one feature's parameters.
@@ -192,10 +209,10 @@ export type FeatureParameters = BoxParameters | CylinderParameters | SphereParam
  * name is still a compile error.
  */
 export type FeatureParameterPatch = Partial<
-  BoxParameters & CylinderParameters & SphereParameters & SketchParameters & ExtrudeParameters & FilletParameters & RevolveParameters & HoleParameters & PatternParameters
+  BoxParameters & CylinderParameters & SphereParameters & SketchParameters & ExtrudeParameters & FilletParameters & RevolveParameters & HoleParameters & PatternParameters & ShellParameters
 >
 
-export type FeatureKind = 'box' | 'cylinder' | 'sphere' | 'sketch' | 'extrude' | 'fillet' | 'revolve' | 'hole' | 'pattern'
+export type FeatureKind = 'box' | 'cylinder' | 'sphere' | 'sketch' | 'extrude' | 'fillet' | 'revolve' | 'hole' | 'pattern' | 'shell'
 
 export type LineEntity = {
   id: string
@@ -405,12 +422,24 @@ export type PatternFeature = FeatureBase & {
   featureIds: string[]
 }
 
-export type Feature = PrimitiveFeature | SketchFeature | ExtrudeFeature | FilletFeature | RevolveFeature | HoleFeature | PatternFeature
+/**
+ * The solid before it hollowed out, its walls `thickness` thick, open where
+ * the picked faces were. With no faces picked it is hollow and closed. Added
+ * in schema 10.
+ */
+export type ShellFeature = FeatureBase & {
+  kind: 'shell'
+  parameters: ShellParameters
+  /** The faces taken away to open the shell, on the solid just before it. */
+  faces: FaceReference[]
+}
+
+export type Feature = PrimitiveFeature | SketchFeature | ExtrudeFeature | FilletFeature | RevolveFeature | HoleFeature | PatternFeature | ShellFeature
 
 /** The features the exact kernel builds a solid for, in one list so additions cannot miss a site. */
-export type SolidFeature = Extract<Feature, { kind: 'extrude' | 'fillet' | 'revolve' | 'hole' | 'pattern' }>
+export type SolidFeature = Extract<Feature, { kind: 'extrude' | 'fillet' | 'revolve' | 'hole' | 'pattern' | 'shell' }>
 
-export const SOLID_KINDS: readonly SolidFeature['kind'][] = ['extrude', 'fillet', 'revolve', 'hole', 'pattern']
+export const SOLID_KINDS: readonly SolidFeature['kind'][] = ['extrude', 'fillet', 'revolve', 'hole', 'pattern', 'shell']
 
 export function isSolidFeature(feature: Feature): feature is SolidFeature {
   return (SOLID_KINDS as readonly string[]).includes(feature.kind)
@@ -422,7 +451,7 @@ export function isSolidFeature(feature: Feature): feature is SolidFeature {
  * arrives.
  */
 export function modifiesPreviousSolid(feature: { kind: string }): boolean {
-  return feature.kind === 'fillet' || feature.kind === 'hole' || feature.kind === 'pattern'
+  return feature.kind === 'fillet' || feature.kind === 'hole' || feature.kind === 'pattern' || feature.kind === 'shell'
 }
 
 export const CURRENT_SCHEMA_VERSION = 10
@@ -510,6 +539,21 @@ export function createFeature(kind: FeatureKind, index: number, sketchPlane: Ske
       throw new Error('Hole features require a sketch of points')
     case 'pattern':
       throw new Error('Pattern features require features to copy')
+    case 'shell':
+      throw new Error('Shell features require faces to open')
+  }
+}
+
+export function createShellFeature(faces: FaceReference[], index: number, thickness: number): ShellFeature {
+  return {
+    id: createId(),
+    kind: 'shell',
+    name: `Shell ${index}`,
+    parameters: { thickness },
+    faces,
+    position: [0, 0, 0],
+    rotation: [0, 0, 0],
+    visible: true,
   }
 }
 
@@ -629,7 +673,7 @@ export function validateCadDocument(value: unknown): { valid: boolean; errors: s
     if (typeof feature.id !== 'string' || !feature.id) errors.push(`${label} is missing its ID.`)
     else if (featureIds.has(feature.id)) errors.push(`${label} has a duplicate ID.`)
     else featureIds.add(feature.id)
-    if (!['box', 'cylinder', 'sphere', 'sketch', 'extrude', 'fillet', 'revolve', 'hole', 'pattern'].includes(feature.kind)) errors.push(`${label} has an unsupported type.`)
+    if (!['box', 'cylinder', 'sphere', 'sketch', 'extrude', 'fillet', 'revolve', 'hole', 'pattern', 'shell'].includes(feature.kind)) errors.push(`${label} has an unsupported type.`)
     if (!Array.isArray(feature.position) || feature.position.length !== 3 || feature.position.some((number) => !Number.isFinite(number))) errors.push(`${label} has an invalid position.`)
     if (!feature.parameters || Object.values(feature.parameters).some((parameter) => typeof parameter === 'number' && !Number.isFinite(parameter))) errors.push(`${label} has invalid parameters.`)
     if (feature.formulas !== undefined && (typeof feature.formulas !== 'object' || Object.values(feature.formulas).some((formula) => typeof formula !== 'string'))) errors.push(`${label} has invalid formulas.`)
@@ -684,6 +728,16 @@ export function validateCadDocument(value: unknown): { valid: boolean; errors: s
       if (!['linear', 'circular', 'mirror'].includes(feature.parameters.pattern)) errors.push(`${name} has an unsupported pattern type.`)
       const { origin } = feature.parameters
       if (!Array.isArray(origin) || origin.length !== 3 || origin.some((value) => !Number.isFinite(value))) errors.push(`${name} has an invalid origin.`)
+    }
+    if (feature.kind === 'shell') {
+      const name = feature.name || 'Shell'
+      if (!(feature.parameters.thickness > 0)) errors.push(`${name} has an invalid wall thickness.`)
+      if (!Array.isArray(feature.faces)) errors.push(`${name} has an invalid face list.`)
+      for (const face of feature.faces ?? []) {
+        for (const vector of [face?.point, face?.normal]) {
+          if (!Array.isArray(vector) || vector.length !== 3 || vector.some((value) => !Number.isFinite(value))) errors.push(`${name} has an invalid face reference.`)
+        }
+      }
     }
   }
   return { valid: errors.length === 0, errors }
