@@ -173,8 +173,9 @@ export function createPreviewGeometry(feature: Feature, features: Feature[] = []
       return createRevolveToolGeometry(feature, features)
     }
     case 'fillet':
-      // Fillets are exact-only operations; the viewport keeps the preceding
-      // solid visible until the selected-edge result arrives from OpenCascade.
+    case 'hole':
+      // Fillets and holes are exact-only operations; the viewport keeps the
+      // preceding solid visible until the result arrives from OpenCascade.
       return new THREE.BufferGeometry()
   }
 }

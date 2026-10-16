@@ -211,3 +211,34 @@ describe('point and symmetry constraints', () => {
       .toEqual([['center', 'center']])
   })
 })
+
+describe('lone points', () => {
+  const point = (at: Vec2): SketchEntity => ({ id: createId(), type: 'point', position: at, construction: false })
+
+  it('relates a point to a line as it would a line end', () => {
+    const p = point([3, 4])
+    const edge = line([0, 0], [10, 0])
+    expect(typesFor([p, edge], [p.id, edge.id])).toEqual(['coincident', 'midpoint', 'pointLineDistance', 'pointOnLine'])
+    expect(buildConstraint('pointLineDistance', [p, edge], [p.id, edge.id])).toMatchObject({ pointRefs: ['center'], value: 4 })
+  })
+
+  it('joins a point to a circle’s centre, or holds it on the circle', () => {
+    const p = point([0.2, 0.1])
+    const ring = circle([0, 0], 5)
+    expect(typesFor([p, ring], [p.id, ring.id])).toEqual(['coincident', 'pointOnCircle'])
+    expect(buildConstraint('coincident', [p, ring], [p.id, ring.id])?.pointRefs).toEqual(['center', 'center'])
+  })
+
+  it('mirrors one point onto another across a centreline', () => {
+    const left = point([-4, 2])
+    const right = point([4, 2])
+    const axis = line([0, -5], [0, 20])
+    expect(buildConstraints('symmetric', [left, right, axis], [left.id, right.id, axis.id]).map((constraint) => constraint.pointRefs))
+      .toEqual([['center', 'center']])
+  })
+
+  it('names a point as a point in the constraint list', () => {
+    const p = point([0, 0])
+    expect(describeConstraint({ id: 'c', type: 'coincident', entityIds: [p.id] }, [p])).toBe('Point 1')
+  })
+})

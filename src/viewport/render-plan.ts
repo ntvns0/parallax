@@ -1,3 +1,5 @@
+import { modifiesPreviousSolid, SOLID_KINDS, type SolidFeature } from '../core/model'
+
 /**
  * Which solid features the viewport draws, and which earlier meshes each one
  * replaces once its exact result comes back from OpenCascade.
@@ -14,6 +16,7 @@
  * and silently hides whatever the last feature did. That is what this module
  * exists to pin down.
  */
+
 
 /** The parts of a feature that decide how it is rendered. */
 export type RenderPlanFeature = {
@@ -34,7 +37,7 @@ export type RenderPlan = {
 }
 
 /** The feature kinds that produce a solid the viewport draws. */
-export type SolidKind = 'extrude' | 'revolve' | 'fillet'
+export type SolidKind = SolidFeature['kind']
 
 /**
  * Generic in the feature type so the viewport can narrow a real `Feature` with
@@ -43,7 +46,7 @@ export type SolidKind = 'extrude' | 'revolve' | 'fillet'
  * missing here in the first place.
  */
 export function isSolid<T extends RenderPlanFeature>(feature: T): feature is T & { kind: SolidKind } {
-  return feature.kind === 'extrude' || feature.kind === 'revolve' || feature.kind === 'fillet'
+  return (SOLID_KINDS as readonly string[]).includes(feature.kind)
 }
 
 /**
@@ -80,7 +83,7 @@ export function planSolidRender(features: RenderPlanFeature[]): RenderPlan {
   for (const stages of bodies.values()) {
     const final = stages.at(-1)
     if (!final) continue
-    if (final.kind === 'fillet' && stages.length > 1) rendered.add(stages.at(-2)!.id)
+    if (modifiesPreviousSolid(final) && stages.length > 1) rendered.add(stages.at(-2)!.id)
     rendered.add(final.id)
   }
 

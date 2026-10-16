@@ -67,6 +67,11 @@ export function solveWithPlaneGcs(wrapper: GcsWrapper, request: ConstraintReques
         { id: arcRulesId(entity.id), type: 'arc_rules', a_id: entity.id },
       )
       anchored = anchored || fixed
+    } else if (entity.type === 'point') {
+      // Named as a centre, so every constraint that takes a centre takes a point.
+      const fixed = isAnchored(anchor, entity.id, 'center')
+      primitives.push({ id: pointId(entity.id, 'center'), type: 'point', x: entity.position[0], y: entity.position[1], fixed })
+      anchored = anchored || fixed
     } else {
       const fixed = isAnchored(anchor, entity.id, 'center')
       primitives.push(
@@ -112,6 +117,10 @@ export function solveWithPlaneGcs(wrapper: GcsWrapper, request: ConstraintReques
         startAngle: solvedArc.startAngle,
         endAngle: solvedArc.endAngle,
       } satisfies ArcEntity
+    }
+    if (entity.type === 'point') {
+      const position = solvedMap.get(pointId(entity.id, 'center'))
+      return position?.type === 'point' ? { ...entity, position: [position.x, position.y] } : entity
     }
     const center = solvedMap.get(pointId(entity.id, 'center'))
     const circle = solvedMap.get(entity.id)

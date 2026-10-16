@@ -10,7 +10,7 @@ import {
   pointOnCircle,
 } from '../core/arc-geometry'
 import { SKETCH_INTERSECTION_DISTANCE_MM, SKETCH_TRIM_MIN_PIECE_MM } from '../core/tolerance-policy'
-import { createId, type ArcEntity, type LineEntity, type SketchConstraint, type SketchEntity, type Vec2 } from '../core/model'
+import { createId, isCurve, type ArcEntity, type CurveEntity, type LineEntity, type SketchConstraint, type SketchEntity, type Vec2 } from '../core/model'
 
 /**
  * Trim: cut a sketch curve back to where it meets its neighbours.
@@ -31,14 +31,14 @@ import { createId, type ArcEntity, type LineEntity, type SketchConstraint, type 
 
 type CircleLike = { center: Vec2; radius: number }
 
-function circleOf(entity: SketchEntity): CircleLike | null {
+function circleOf(entity: CurveEntity): CircleLike | null {
   return entity.type === 'line' ? null : { center: entity.center, radius: entity.radius }
 }
 
 const cross = (ax: number, ay: number, bx: number, by: number) => ax * by - ay * bx
 
 /** Whether a point lies on the entity's own span, within tolerance. */
-function liesOnEntity(entity: SketchEntity, point: Vec2): boolean {
+function liesOnEntity(entity: CurveEntity, point: Vec2): boolean {
   if (entity.type === 'line') {
     const dx = entity.end[0] - entity.start[0]
     const dy = entity.end[1] - entity.start[1]
@@ -112,7 +112,7 @@ function intersectCircles(a: CircleLike, b: CircleLike): Vec2[] {
  * only reports crossings within its sweep and a line only within its length —
  * the infinite line and the full circle are solving devices, not the geometry.
  */
-export function intersectSketchEntities(a: SketchEntity, b: SketchEntity): Vec2[] {
+export function intersectSketchEntities(a: CurveEntity, b: CurveEntity): Vec2[] {
   const circleA = circleOf(a)
   const circleB = circleOf(b)
   let candidates: Vec2[] = []
@@ -124,7 +124,7 @@ export function intersectSketchEntities(a: SketchEntity, b: SketchEntity): Vec2[
 }
 
 /** Where every other entity crosses this one, as parameters along it. */
-function crossingParameters(target: SketchEntity, others: SketchEntity[]): number[] {
+function crossingParameters(target: CurveEntity, others: CurveEntity[]): number[] {
   const found: number[] = []
   for (const other of others) {
     for (const point of intersectSketchEntities(target, other)) {
@@ -143,7 +143,7 @@ function crossingParameters(target: SketchEntity, others: SketchEntity[]): numbe
  * a circle 0..1 counter-clockwise from the positive X axis, which is arbitrary
  * but consistent, and a closed curve has no natural start to prefer.
  */
-function parameterAt(entity: SketchEntity, point: Vec2): number | null {
+function parameterAt(entity: CurveEntity, point: Vec2): number | null {
   if (entity.type === 'line') {
     const dx = entity.end[0] - entity.start[0]
     const dy = entity.end[1] - entity.start[1]
@@ -157,13 +157,13 @@ function parameterAt(entity: SketchEntity, point: Vec2): number | null {
   return counterClockwiseSpan(entity.startAngle, angleAt(entity.center, point)) / sweep
 }
 
-function lengthOf(entity: SketchEntity): number {
+function lengthOf(entity: CurveEntity): number {
   if (entity.type === 'line') return Math.hypot(entity.end[0] - entity.start[0], entity.end[1] - entity.start[1])
   if (entity.type === 'circle') return TAU * entity.radius
   return (entity.endAngle - entity.startAngle) * entity.radius
 }
 
-function pointAtParameter(entity: SketchEntity, parameter: number): Vec2 {
+function pointAtParameter(entity: CurveEntity, parameter: number): Vec2 {
   if (entity.type === 'line') {
     return [
       entity.start[0] + (entity.end[0] - entity.start[0]) * parameter,
@@ -175,7 +175,7 @@ function pointAtParameter(entity: SketchEntity, parameter: number): Vec2 {
 }
 
 /** One surviving span of a trimmed entity, as an entity of its own. */
-function pieceOf(entity: SketchEntity, from: number, to: number, id: string): SketchEntity | null {
+function pieceOf(entity: CurveEntity, from: number, to: number, id: string): CurveEntity | null {
   if (to - from < SKETCH_TRIM_MIN_PIECE_MM / Math.max(lengthOf(entity), 1e-9)) return null
   if (entity.type === 'line') {
     const piece: LineEntity = { ...entity, id, start: pointAtParameter(entity, from), end: pointAtParameter(entity, to) }
@@ -231,7 +231,7 @@ const CONSTRAINTS_SURVIVING_TRIM: readonly SketchConstraint['type'][] = ['horizo
  * may be less than `from`, meaning the removed span crosses the seam at angle
  * zero; the caller reads it cyclically.
  */
-function removalSpan(entities: SketchEntity[], target: SketchEntity, point: Vec2): { from: number; to: number } | null {
+function removalSpan(entities: CurveEntity[], target: CurveEntity, point: Vec2): { from: number; to: number } | null {
   const clicked = parameterAt(target, point)
   if (clicked === null) return null
   const crossings = crossingParameters(target, entities.filter((entity) => entity.id !== target.id))
@@ -259,9 +259,10 @@ function removalSpan(entities: SketchEntity[], target: SketchEntity, point: Vec2
  * front.
  */
 export function trimRemovalPreview(entities: SketchEntity[], targetId: string, point: Vec2, samples = 24): Vec2[] | null {
-  const target = entities.find((entity) => entity.id === targetId)
+  const curves = entities.filter(isCurve)
+  const target = curves.find((entity) => entity.id === targetId)
   if (!target) return null
-  const span = removalSpan(entities, target, point)
+  const span = removalSpan(curves, target, point)
   if (!span) return null
   const from = span.from
   const to = target.type === 'circle' && span.to <= span.from ? span.to + 1 : span.to
@@ -270,7 +271,7 @@ export function trimRemovalPreview(entities: SketchEntity[], targetId: string, p
   return sampleSpan(target, from, to, target.type === 'line' ? 2 : samples)
 }
 
-function sampleSpan(entity: SketchEntity, from: number, to: number, samples: number): Vec2[] {
+function sampleSpan(entity: CurveEntity, from: number, to: number, samples: number): Vec2[] {
   const steps = Math.max(2, Math.ceil(samples))
   const points: Vec2[] = []
   for (let index = 0; index < steps; index += 1) {
@@ -302,12 +303,14 @@ export function trimSketchEntity(
   targetId: string,
   point: Vec2,
 ): TrimOutcome | null {
-  const target = entities.find((entity) => entity.id === targetId)
+  // A lone point is neither cut nor a cutter.
+  const curves = entities.filter(isCurve)
+  const target = curves.find((entity) => entity.id === targetId)
   if (!target) return null
-  const span = removalSpan(entities, target, point)
+  const span = removalSpan(curves, target, point)
   if (!span) return null
 
-  const pieces: SketchEntity[] = []
+  const pieces: CurveEntity[] = []
   if (target.type === 'circle') {
     // A trimmed circle leaves at most one piece: the rest of the turn, running
     // counter-clockwise out of the removed span's far end back into its near one.
@@ -340,7 +343,7 @@ export function trimSketchEntity(
   }
 }
 
-function sameGeometry(a: SketchEntity, b: SketchEntity): boolean {
+function sameGeometry(a: CurveEntity, b: CurveEntity): boolean {
   if (a.type !== b.type) return false
   if (a.type === 'line' && b.type === 'line') {
     return a.start[0] === b.start[0] && a.start[1] === b.start[1] && a.end[0] === b.end[0] && a.end[1] === b.end[1]
@@ -358,9 +361,9 @@ function sameGeometry(a: SketchEntity, b: SketchEntity): boolean {
  * click inside a large circle does not capture it ahead of a line running under
  * the cursor.
  */
-export function pickTrimTarget(entities: SketchEntity[], point: Vec2, tolerance: number): SketchEntity | null {
-  let best: { entity: SketchEntity; distance: number } | null = null
-  for (const entity of entities) {
+export function pickTrimTarget(entities: SketchEntity[], point: Vec2, tolerance: number): CurveEntity | null {
+  let best: { entity: CurveEntity; distance: number } | null = null
+  for (const entity of entities.filter(isCurve)) {
     const distance = distanceToEntity(entity, point)
     if (distance > tolerance) continue
     if (!best || distance < best.distance) best = { entity, distance }
@@ -368,7 +371,7 @@ export function pickTrimTarget(entities: SketchEntity[], point: Vec2, tolerance:
   return best?.entity ?? null
 }
 
-function distanceToEntity(entity: SketchEntity, point: Vec2): number {
+function distanceToEntity(entity: CurveEntity, point: Vec2): number {
   if (entity.type === 'line') {
     const dx = entity.end[0] - entity.start[0]
     const dy = entity.end[1] - entity.start[1]

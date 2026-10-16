@@ -3,7 +3,7 @@ import { resolve } from 'node:path'
 import { beforeAll, describe, expect, it } from 'vitest'
 import { GcsWrapper, init_planegcs_module } from '@salusoft89/planegcs'
 import { arcEndPoint, arcStartPoint, normalizeArc } from '../core/arc-geometry'
-import type { ArcEntity, LineEntity, SketchConstraint, Vec2 } from '../core/model'
+import type { ArcEntity, LineEntity, PointEntity, SketchConstraint, Vec2 } from '../core/model'
 import { solveWithPlaneGcs } from './planegcs-solve'
 
 /**
@@ -125,5 +125,41 @@ describe('point and symmetry constraints in PlaneGCS', () => {
     const solved = response.entities[0] as LineEntity
     expect(response.converged).toBe(true)
     expect(Math.hypot(...solved.end)).toBeCloseTo(5, 7)
+  })
+
+  it('places a lone point by its distances from two edges, and moves it when they change', () => {
+    // A hole position: 8 from the bottom edge and 12 from the left one.
+    const bottom: LineEntity = { id: 'bottom', type: 'line', start: [0, 0], end: [40, 0], construction: false }
+    const left: LineEntity = { id: 'left', type: 'line', start: [0, 0], end: [0, 30], construction: false }
+    const hole: PointEntity = { id: 'hole', type: 'point', position: [10, 10], construction: false }
+    const constraints = (fromBottom: number): SketchConstraint[] => [
+      { id: 'h', type: 'horizontal', entityIds: ['bottom'] },
+      { id: 'v', type: 'vertical', entityIds: ['left'] },
+      { id: 'corner', type: 'coincident', entityIds: ['bottom', 'left'], pointRefs: ['start', 'start'] },
+      { id: 'up', type: 'pointLineDistance', entityIds: ['hole', 'bottom'], pointRefs: ['center'], value: fromBottom },
+      { id: 'across', type: 'pointLineDistance', entityIds: ['hole', 'left'], pointRefs: ['center'], value: 12 },
+    ]
+    const solve = (fromBottom: number) => solveWithPlaneGcs(wrapper, {
+      id: 1, entities: [bottom, left, hole], constraints: constraints(fromBottom), anchor: { entityId: 'bottom', point: 'start' },
+    })
+
+    const placed = solve(8)
+    expect(placed.converged).toBe(true)
+    expect((placed.entities[2] as PointEntity).position[0]).toBeCloseTo(12, 7)
+    expect((placed.entities[2] as PointEntity).position[1]).toBeCloseTo(8, 7)
+    expect((solve(15).entities[2] as PointEntity).position[1]).toBeCloseTo(15, 7)
+  })
+
+  it('anchors a sketch on a lone point and joins a circle’s centre to it', () => {
+    const datum: PointEntity = { id: 'datum', type: 'point', position: [5, 5], construction: false }
+    const response = solveWithPlaneGcs(wrapper, {
+      id: 1,
+      entities: [datum, { id: 'ring', type: 'circle', center: [6, 4], radius: 2, construction: false }],
+      constraints: [{ id: 'join', type: 'coincident', entityIds: ['datum', 'ring'], pointRefs: ['center', 'center'] }],
+      anchor: { entityId: 'datum', point: 'center' },
+    })
+    expect(response.converged).toBe(true)
+    expect((response.entities[0] as PointEntity).position).toEqual([5, 5])
+    expect(response.entities[1]).toMatchObject({ center: [expect.closeTo(5, 7), expect.closeTo(5, 7)] })
   })
 })

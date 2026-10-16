@@ -39,4 +39,9 @@ describe('sketchWirePositions', () => {
     expect(wire.profile).toHaveLength(6)
     expect(wire.construction).toHaveLength(6)
   })
+
+  it('draws a lone point as a small cross', () => {
+    const point: SketchEntity = { id: 'p', type: 'point', position: [10, 20], construction: false }
+    expect(sketchWirePositions(sketch('XY', 2, [point])).profile).toEqual([9.25, 20, 2, 10.75, 20, 2, 10, 19.25, 2, 10, 20.75, 2])
+  })
 })

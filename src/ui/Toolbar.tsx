@@ -5,11 +5,11 @@ import {
   Ruler,
 } from 'lucide-react'
 import { useDocumentStore } from '../core/document-store'
-import type { Feature, FeatureKind, FilletBlend } from '../core/model'
+import { isSolidFeature, type Feature, type FeatureKind, type FilletBlend, type SketchFeature, type SolidFeature } from '../core/model'
 import { getProfileRegions } from '../core/sketch'
 import { defaultExtrudeDistance, materialDepthUnderSketch, FALLBACK_EXTRUDE_DISTANCE_MM } from '../core/extrude-defaults'
 import { cachedExactMesh } from '../kernel/exact-kernel'
-import { BoxFeatureIcon, ChamferFeatureIcon, CylinderFeatureIcon, ExtrudeFeatureIcon, FilletFeatureIcon, RevolveFeatureIcon, SketchFeatureIcon, SphereFeatureIcon } from './icons'
+import { BoxFeatureIcon, ChamferFeatureIcon, CylinderFeatureIcon, ExtrudeFeatureIcon, FilletFeatureIcon, HoleFeatureIcon, RevolveFeatureIcon, SketchFeatureIcon, SphereFeatureIcon } from './icons'
 
 export function IconButton({ label, disabled, active, onClick, children }: {
   label: string
@@ -25,13 +25,19 @@ export function IconButton({ label, disabled, active, onClick, children }: {
   )
 }
 
+/** A sketch can drill holes when it has a point to drill at and a solid comes before it. */
+function canDrill(sketch: SketchFeature): boolean {
+  if (!sketch.entities.some((entity) => entity.type === 'point' && !entity.construction)) return false
+  const features = useDocumentStore.getState().document.features
+  return features.slice(0, features.findIndex((candidate) => candidate.id === sketch.id)).some(isSolidFeature)
+}
+
 function startingExtrudeDistance(sketch: Extract<Feature, { kind: 'sketch' }>): number {
   const faceNormalSign = sketch.parameters.faceNormalSign
   if (!faceNormalSign) return FALLBACK_EXTRUDE_DISTANCE_MM
   const features = useDocumentStore.getState().document.features
   const sketchIndex = features.findIndex((candidate) => candidate.id === sketch.id)
-  const solid = [...features.slice(0, sketchIndex)].reverse()
-    .find((candidate) => candidate.kind === 'extrude' || candidate.kind === 'fillet' || candidate.kind === 'revolve')
+  const solid = [...features.slice(0, sketchIndex)].reverse().find(isSolidFeature)
   if (!solid || solid.kind === 'revolve') return FALLBACK_EXTRUDE_DISTANCE_MM
   const mesh = cachedExactMesh(solid, features)
   if (!mesh) return FALLBACK_EXTRUDE_DISTANCE_MM
@@ -53,10 +59,11 @@ export function ModelToolbar({
   onStartSketch: () => void
   measureActive: boolean
   onMeasureChange: (active: boolean) => void
-  onStartFillet: (feature: Extract<Feature, { kind: 'extrude' | 'fillet' }>, blend: FilletBlend) => void
+  onStartFillet: (feature: SolidFeature, blend: FilletBlend) => void
 }) {
   const canExtrude = selectedFeature?.kind === 'sketch' && getProfileRegions(selectedFeature).length > 0
-  const canFillet = selectedFeature?.kind === 'extrude' || selectedFeature?.kind === 'fillet'
+  const canFillet = selectedFeature !== null && isSolidFeature(selectedFeature)
+  const canHole = selectedFeature?.kind === 'sketch' && canDrill(selectedFeature)
   return (
     <div className="model-toolbar">
       <IconButton label="Select" active={!measureActive} onClick={() => onMeasureChange(false)}><MousePointer2 /></IconButton>
@@ -75,11 +82,14 @@ export function ModelToolbar({
         if (selectedFeature?.kind === 'sketch') useDocumentStore.getState().revolveSketch(selectedFeature.id)
       }}><RevolveFeatureIcon /></IconButton>
       <IconButton label={canFillet ? 'Fillet selected edges' : 'Select an exact solid to fillet edges'} disabled={!canFillet} onClick={() => {
-        if (selectedFeature?.kind === 'extrude' || selectedFeature?.kind === 'fillet') onStartFillet(selectedFeature, 'round')
+        if (selectedFeature && isSolidFeature(selectedFeature)) onStartFillet(selectedFeature, 'round')
       }}><FilletFeatureIcon /></IconButton>
       <IconButton label={canFillet ? 'Chamfer selected edges' : 'Select an exact solid to chamfer edges'} disabled={!canFillet} onClick={() => {
-        if (selectedFeature?.kind === 'extrude' || selectedFeature?.kind === 'fillet') onStartFillet(selectedFeature, 'chamfer')
+        if (selectedFeature && isSolidFeature(selectedFeature)) onStartFillet(selectedFeature, 'chamfer')
       }}><ChamferFeatureIcon /></IconButton>
+      <IconButton label={canHole ? 'Hole at sketch points' : 'Select a sketch with points, on or above a solid, to drill holes'} disabled={!canHole} onClick={() => {
+        if (selectedFeature?.kind === 'sketch') useDocumentStore.getState().addHoles(selectedFeature.id)
+      }}><HoleFeatureIcon /></IconButton>
     </div>
   )
 }

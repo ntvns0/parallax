@@ -189,6 +189,17 @@ const BINDABLE_FIELDS: Record<FeatureKind, BindableField[]> = {
       validate: (value) => (value > 0 && value <= 360 ? null : 'An angle must be greater than zero and no more than 360°.'),
     },
   ],
+  hole: [
+    { key: 'diameter', label: 'Diameter', validate: positive('A hole diameter') },
+    { key: 'depth', label: 'Depth', validate: positive('A hole depth') },
+    { key: 'headDiameter', label: 'Head diameter', validate: positive('A head diameter') },
+    { key: 'headDepth', label: 'Head depth', validate: positive('A counterbore depth') },
+    {
+      key: 'countersinkAngle',
+      label: 'Countersink angle',
+      validate: (value) => (value > 0 && value < 180 ? null : 'A countersink angle must be between 0° and 180°.'),
+    },
+  ],
 }
 
 export function bindableFields(kind: FeatureKind): BindableField[] {

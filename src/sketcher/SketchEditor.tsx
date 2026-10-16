@@ -36,6 +36,7 @@ import {
   circleGeometry,
   distance,
   lineGeometry,
+  pointGeometry,
   rectangleGeometry,
   tangentArcGeometry,
   threePointArcGeometry,
@@ -316,6 +317,12 @@ export function SketchEditor({ sketchId }: { sketchId: string }) {
       setCursor(point)
       return
     }
+    if (tool === 'point') {
+      // A press on a line places the point on it, tied there by its snap.
+      const result = modelPointDetails(event.clientX, event.clientY)
+      commitGeometry(pointGeometry(result.point, result.snap))
+      return
+    }
     if (tool === 'line') {
       // Geometry hit areas sit above the SVG background. While drawing, a
       // press on one is a snap target, not a request to drag that geometry.
@@ -396,6 +403,11 @@ export function SketchEditor({ sketchId }: { sketchId: string }) {
       setSelectedEntityId(null)
       setActiveSnap(null)
       setActiveRuler(null)
+      return
+    }
+    if (tool === 'point') {
+      commitGeometry(pointGeometry(result.point, result.snap))
+      setActiveSnap(null)
       return
     }
     if (tool === 'three-point-arc') {

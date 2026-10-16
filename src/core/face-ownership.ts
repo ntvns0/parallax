@@ -2,7 +2,7 @@ import { distanceToArc } from './arc-geometry'
 import { currentEdgeReference } from './edge-anchor'
 import { extrudeSweepRange } from './extrude-direction'
 import { currentPlaneOffset } from './face-anchor'
-import type { ExtrudeFeature, Feature, SketchEntity, SketchFeature, Vec2, Vec3 } from './model'
+import { isCurve, type CurveEntity, type ExtrudeFeature, type Feature, type SketchFeature, type Vec2, type Vec3 } from './model'
 import { getProfileRegions, pointInProfile } from './sketch'
 import { projectToSketchPlane, sketchPlaneOffset } from './sketch-plane'
 import { FACE_OWNERSHIP_DISTANCE_MM } from './tolerance-policy'
@@ -42,7 +42,7 @@ function distanceToSegment(point: Vec3, start: Vec3, end: Vec3) {
 }
 
 /** Distance from a 2D point to a sketch entity's curve. */
-function distanceToEntity(entity: SketchEntity, point: Vec2): number {
+function distanceToEntity(entity: CurveEntity, point: Vec2): number {
   if (entity.type === 'circle') {
     return Math.abs(Math.hypot(point[0] - entity.center[0], point[1] - entity.center[1]) - entity.radius)
   }
@@ -68,7 +68,7 @@ function extrudeOwnsFace(face: FaceSample, extrude: ExtrudeFeature, sketch: Sket
   const far = Math.max(start, end)
   const flat = face.points.map((point) => projectToSketchPlane(sketch.plane, point))
   const depths = face.points.map((point) => sketchPlaneOffset(sketch.plane, point))
-  const entities = sketch.entities.filter((entity) => !entity.construction)
+  const entities = sketch.entities.filter(isCurve).filter((entity) => !entity.construction)
 
   const withinSweep = depths.every((depth) => depth >= near - FACE_OWNERSHIP_DISTANCE_MM && depth <= far + FACE_OWNERSHIP_DISTANCE_MM)
   if (withinSweep && entities.some((entity) => flat.every((point) => distanceToEntity(entity, point) <= FACE_OWNERSHIP_DISTANCE_MM))) {

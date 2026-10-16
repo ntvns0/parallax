@@ -22,6 +22,30 @@ export type SketchParameters = { planeOffset: number; faceNormalSign?: -1 | 1 }
 export type ExtrudeParameters = { distance: number; symmetric: boolean; edgeRadius: number }
 export type RevolveParameters = { angle: number; axis: 'X' | 'Y' }
 
+/** A plain bore, one with a flat-bottomed recess for a cap screw's head, or one with a cone for a flat head. */
+export type HoleForm = 'simple' | 'counterbore' | 'countersink'
+
+export type HoleParameters = {
+  form: HoleForm
+  diameter: number
+  /** How deep the bore goes from the surface. Ignored when `through`. */
+  depth: number
+  /** Through everything the solid has in that direction. */
+  through: boolean
+  /** The counterbore's or countersink's diameter at the surface. */
+  headDiameter: number
+  /** How deep a counterbore goes. */
+  headDepth: number
+  /** A countersink's included angle, in degrees. */
+  countersinkAngle: number
+  /**
+   * The preset the hole was sized from, such as 'M3 clearance'. Kept as
+   * intent, so a drawing can call the hole out by what it is for, and dropped
+   * once a size is typed by hand.
+   */
+  preset?: string
+}
+
 /**
  * What made an edge, so it can be found again after the design changes.
  *
@@ -142,10 +166,10 @@ export type FeatureParameters = BoxParameters | CylinderParameters | SphereParam
  * name is still a compile error.
  */
 export type FeatureParameterPatch = Partial<
-  BoxParameters & CylinderParameters & SphereParameters & SketchParameters & ExtrudeParameters & FilletParameters & RevolveParameters
+  BoxParameters & CylinderParameters & SphereParameters & SketchParameters & ExtrudeParameters & FilletParameters & RevolveParameters & HoleParameters
 >
 
-export type FeatureKind = 'box' | 'cylinder' | 'sphere' | 'sketch' | 'extrude' | 'fillet' | 'revolve'
+export type FeatureKind = 'box' | 'cylinder' | 'sphere' | 'sketch' | 'extrude' | 'fillet' | 'revolve' | 'hole'
 
 export type LineEntity = {
   id: string
@@ -182,7 +206,26 @@ export type ArcEntity = {
   construction: boolean
 }
 
-export type SketchEntity = LineEntity | CircleEntity | ArcEntity
+/**
+ * A lone point: where a hole goes, or a datum to dimension from. It bounds no
+ * profile. Constraints name its position as its `center`, the same as a
+ * circle's, so everything that takes a centre takes a point. Added in schema 10.
+ */
+export type PointEntity = {
+  id: string
+  type: 'point'
+  position: Vec2
+  construction: boolean
+}
+
+/** The entities with extent: what bounds a profile, sweeps an edge, or can be trimmed. */
+export type CurveEntity = LineEntity | CircleEntity | ArcEntity
+
+export type SketchEntity = CurveEntity | PointEntity
+
+export function isCurve(entity: SketchEntity): entity is CurveEntity {
+  return entity.type !== 'point'
+}
 
 /**
  * The point PlaneGCS holds still while it solves.
@@ -313,9 +356,38 @@ export type RevolveFeature = FeatureBase & {
   axisEntityId?: string
 }
 
-export type Feature = PrimitiveFeature | SketchFeature | ExtrudeFeature | FilletFeature | RevolveFeature
+/**
+ * Holes drilled into the solid before it, one at each point of a sketch.
+ * Construction points are not drilled, so they can serve as datums. Added in
+ * schema 10.
+ */
+export type HoleFeature = FeatureBase & {
+  kind: 'hole'
+  parameters: HoleParameters
+  sketchId: string
+}
 
-export const CURRENT_SCHEMA_VERSION = 9
+export type Feature = PrimitiveFeature | SketchFeature | ExtrudeFeature | FilletFeature | RevolveFeature | HoleFeature
+
+/** The features the exact kernel builds a solid for, in one list so additions cannot miss a site. */
+export type SolidFeature = Extract<Feature, { kind: 'extrude' | 'fillet' | 'revolve' | 'hole' }>
+
+export const SOLID_KINDS: readonly SolidFeature['kind'][] = ['extrude', 'fillet', 'revolve', 'hole']
+
+export function isSolidFeature(feature: Feature): feature is SolidFeature {
+  return (SOLID_KINDS as readonly string[]).includes(feature.kind)
+}
+
+/**
+ * Features that change the solid before them and have no shape of their own
+ * to preview, so the viewport keeps showing that solid until the exact result
+ * arrives.
+ */
+export function modifiesPreviousSolid(feature: { kind: string }): boolean {
+  return feature.kind === 'fillet' || feature.kind === 'hole'
+}
+
+export const CURRENT_SCHEMA_VERSION = 10
 
 /**
  * A named value the model can be driven by.
@@ -396,6 +468,21 @@ export function createFeature(kind: FeatureKind, index: number, sketchPlane: Ske
       throw new Error('Revolve features require a source sketch')
     case 'fillet':
       throw new Error('Fillet features require selected edges')
+    case 'hole':
+      throw new Error('Hole features require a sketch of points')
+  }
+}
+
+export function createHoleFeature(sketchId: string, index: number, parameters: HoleParameters): HoleFeature {
+  return {
+    id: createId(),
+    kind: 'hole',
+    name: `Hole ${index}`,
+    parameters,
+    sketchId,
+    position: [0, 0, 0],
+    rotation: [0, 0, 0],
+    visible: true,
   }
 }
 
@@ -489,7 +576,7 @@ export function validateCadDocument(value: unknown): { valid: boolean; errors: s
     if (typeof feature.id !== 'string' || !feature.id) errors.push(`${label} is missing its ID.`)
     else if (featureIds.has(feature.id)) errors.push(`${label} has a duplicate ID.`)
     else featureIds.add(feature.id)
-    if (!['box', 'cylinder', 'sphere', 'sketch', 'extrude', 'fillet', 'revolve'].includes(feature.kind)) errors.push(`${label} has an unsupported type.`)
+    if (!['box', 'cylinder', 'sphere', 'sketch', 'extrude', 'fillet', 'revolve', 'hole'].includes(feature.kind)) errors.push(`${label} has an unsupported type.`)
     if (!Array.isArray(feature.position) || feature.position.length !== 3 || feature.position.some((number) => !Number.isFinite(number))) errors.push(`${label} has an invalid position.`)
     if (!feature.parameters || Object.values(feature.parameters).some((parameter) => typeof parameter === 'number' && !Number.isFinite(parameter))) errors.push(`${label} has invalid parameters.`)
     if (feature.formulas !== undefined && (typeof feature.formulas !== 'object' || Object.values(feature.formulas).some((formula) => typeof formula !== 'string'))) errors.push(`${label} has invalid formulas.`)
@@ -529,6 +616,14 @@ export function validateCadDocument(value: unknown): { valid: boolean; errors: s
       if (!Number.isFinite(feature.parameters.angle) || feature.parameters.angle <= 0 || feature.parameters.angle > 360) errors.push(`${feature.name || 'Revolve'} has an invalid angle.`)
       if (!['X', 'Y'].includes(feature.parameters.axis)) errors.push(`${feature.name || 'Revolve'} has an invalid axis.`)
       if (feature.axisEntityId !== undefined && typeof feature.axisEntityId !== 'string') errors.push(`${feature.name || 'Revolve'} has an invalid axis line.`)
+    }
+    if (feature.kind === 'hole') {
+      const source = document.features.find((candidate) => candidate.id === feature.sketchId)
+      const name = feature.name || 'Hole'
+      if (source?.kind !== 'sketch') errors.push(`${name} references a missing sketch.`)
+      if (!['simple', 'counterbore', 'countersink'].includes(feature.parameters.form)) errors.push(`${name} has an unsupported form.`)
+      if (!(feature.parameters.diameter > 0)) errors.push(`${name} has an invalid diameter.`)
+      if (typeof feature.parameters.through !== 'boolean') errors.push(`${name} has an invalid depth setting.`)
     }
   }
   return { valid: errors.length === 0, errors }

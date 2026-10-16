@@ -17,7 +17,7 @@ import {
 import { prepareFilletFeature, useDocumentStore } from '../core/document-store'
 import { anchorEdgeReferences } from '../core/edge-anchor'
 import { logDiagnostic } from '../core/diagnostics'
-import { validateCadDocument, type CadDocument, type Feature, type FilletBlend, type FilletCornerStyle, type FilletEdgeReference } from '../core/model'
+import { isSolidFeature, validateCadDocument, type CadDocument, type Feature, type FilletBlend, type SolidFeature, type FilletCornerStyle, type FilletEdgeReference } from '../core/model'
 import { formatLength, formatLengthInput, parseLengthInput, sketchSnapIncrement, unitLabel } from '../core/units'
 import { cachedExactMesh, preflightExactFillet, useKernelStore } from '../kernel/exact-kernel'
 import { expandConnectedFilletEdges, extractMeshEdges } from '../kernel/fillet-edge-reference'
@@ -69,6 +69,12 @@ export function App() {
   const [commandOpen, setCommandOpen] = useState(false)
   const [drawingOpen, setDrawingOpen] = useState(false)
   const [notice, setNotice] = useState<{ tone: 'success' | 'error'; message: string } | null>(null)
+  // Success is news, not a state to keep: it goes by itself. Errors stay until dismissed.
+  useEffect(() => {
+    if (notice?.tone !== 'success') return
+    const timer = setTimeout(() => setNotice((current) => (current === notice ? null : current)), 5000)
+    return () => clearTimeout(timer)
+  }, [notice])
   const [updateReady, setUpdateReady] = useState(false)
 
   const selectedFeature = document.features.find((feature) => feature.id === selectedId) ?? null
@@ -86,7 +92,7 @@ export function App() {
     setNotice({ tone: 'success', message: `Sketching on ${result.featureName} · ${result.plane} plane at ${formatLength(result.planeOffset, displayUnits)}.` })
   }
 
-  function startFillet(target: Extract<Feature, { kind: 'extrude' | 'fillet' }>, blend: FilletBlend) {
+  function startFillet(target: SolidFeature, blend: FilletBlend) {
     const initialSize = blend === 'chamfer' ? 1 : 2
     dispatch({ type: 'START_FILLET', targetId: target.id, initialRadiusDraft: formatLengthInput(initialSize, displayUnits), blend })
     setNotice(null)
@@ -94,9 +100,7 @@ export function App() {
 
   function startFilletReselection(feature: Extract<Feature, { kind: 'fillet' }>) {
     const featureIndex = document.features.findIndex((candidate) => candidate.id === feature.id)
-    const target = [...document.features.slice(0, featureIndex)].reverse().find(
-      (candidate) => candidate.kind === 'extrude' || candidate.kind === 'revolve' || candidate.kind === 'fillet',
-    )
+    const target = [...document.features.slice(0, featureIndex)].reverse().find(isSolidFeature)
     if (!target) {
       setNotice({ tone: 'error', message: 'No earlier solid is available for edge reselection.' })
       return
@@ -116,10 +120,7 @@ export function App() {
     if (mode.kind !== 'fillet-selection') return
     let toAdd = [edge]
     if (mode.propagate && mode.targetId) {
-      const targetFeature = document.features.find(
-        (f): f is Extract<Feature, { kind: 'extrude' | 'fillet' | 'revolve' }> =>
-          f.id === mode.targetId && (f.kind === 'extrude' || f.kind === 'fillet' || f.kind === 'revolve')
-      )
+      const targetFeature = document.features.find((f): f is SolidFeature => f.id === mode.targetId && isSolidFeature(f))
       if (targetFeature) {
         const mesh = cachedExactMesh(targetFeature, document.features)
         if (mesh) {
@@ -147,9 +148,7 @@ export function App() {
         const current = store.document.features[featureIndex]
         if (current?.kind !== 'fillet') throw new Error(`The ${chamfer ? 'chamfer' : 'fillet'} being repaired is no longer available.`)
         const priorFeatures = store.document.features.slice(0, featureIndex)
-        const target = [...priorFeatures].reverse().find(
-          (candidate) => candidate.kind === 'extrude' || candidate.kind === 'revolve' || candidate.kind === 'fillet',
-        )
+        const target = [...priorFeatures].reverse().find(isSolidFeature)
         if (!target) throw new Error('No earlier solid is available for edge reselection.')
         const feature = {
           ...current,

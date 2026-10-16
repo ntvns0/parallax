@@ -204,3 +204,11 @@ describe('construction geometry in profiles', () => {
     expect(regions[0].holes).toEqual([])
   })
 })
+
+describe('lone points', () => {
+  it('move with a translation and anchor the sketch by their position', () => {
+    const entities: SketchEntity[] = [{ id: 'p', type: 'point', position: [2, 3], construction: false }]
+    expect(translateSketchEntities(entities, new Set(['p']), [1, -1])).toEqual([{ id: 'p', type: 'point', position: [3, 2], construction: false }])
+    expect(sketchAnchorPoint(entities, resolveSketchAnchor(entities, undefined))).toEqual([2, 3])
+  })
+})

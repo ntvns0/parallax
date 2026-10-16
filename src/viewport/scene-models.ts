@@ -3,7 +3,7 @@ import type { TransformControls } from 'three/examples/jsm/controls/TransformCon
 import { useDocumentStore } from '../core/document-store'
 import { attributeFaces } from '../core/face-ownership'
 import { createExtrudeToolGeometry, createPreviewGeometry, createRevolveToolGeometry } from '../core/geometry'
-import type { ExtrudeFeature, Feature, RevolveFeature, SketchFeature } from '../core/model'
+import { modifiesPreviousSolid, type ExtrudeFeature, type Feature, type RevolveFeature, type SketchFeature } from '../core/model'
 import { evaluateViewportMesh, kernelMeshToGeometry } from '../kernel/exact-kernel'
 import { disposeObject } from './exact-scene-adapter'
 import { faceGroupSamples } from './face-geometry'
@@ -25,6 +25,7 @@ function documentGeometrySignature() {
     parameters: feature.parameters,
     ...(feature.kind === 'sketch' ? { plane: feature.plane, entities: feature.entities, attachment: feature.attachment } : {}),
     ...(feature.kind === 'extrude' || feature.kind === 'revolve' ? { sketchId: feature.sketchId, operation: feature.operation } : {}),
+    ...(feature.kind === 'hole' ? { sketchId: feature.sketchId } : {}),
     ...(feature.kind === 'fillet' ? { edges: feature.edges } : {}),
   })))
 }
@@ -86,8 +87,8 @@ export class SceneModels {
       const sketch = feature.kind === 'extrude' || feature.kind === 'revolve'
         ? document.features.find((candidate) => candidate.id === feature.sketchId)
         : undefined
-      if (feature.kind !== 'fillet' && feature.operation !== 'newBody') this.addPendingGhost(feature, document.features)
-      if (feature.kind !== 'fillet' && sketch?.kind !== 'sketch') continue
+      if ((feature.kind === 'extrude' || feature.kind === 'revolve') && feature.operation !== 'newBody') this.addPendingGhost(feature, document.features)
+      if (!modifiesPreviousSolid(feature) && sketch?.kind !== 'sketch') continue
       void evaluateViewportMesh(feature, sketch?.kind === 'sketch' ? sketch : undefined, document.features).then((result) => {
         if (result.status === 'superseded') return
         if (generation !== this.generation || this.meshes.get(feature.id) !== mesh) return
@@ -177,7 +178,7 @@ export class SceneModels {
   }
 
   private addPreviewMesh(feature: Exclude<Feature, SketchFeature>, features: Feature[], selected: boolean) {
-    const geometry = feature.kind === 'fillet' ? new THREE.BufferGeometry() : createPreviewGeometry(feature, features)
+    const geometry = modifiesPreviousSolid(feature) ? new THREE.BufferGeometry() : createPreviewGeometry(feature, features)
     const mesh = new THREE.Mesh(geometry, new THREE.MeshStandardMaterial({
       color: selected ? '#76e2ba' : '#b8c7c1',
       roughness: 0.58,

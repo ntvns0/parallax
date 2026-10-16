@@ -7,11 +7,14 @@ import {
   createExtrudeFeature,
   createFeature,
   createFilletFeature,
+  createHoleFeature,
   createId,
   createRevolveFeature,
+  isSolidFeature,
   type ExtrudeFeature,
   type Feature,
   type FilletEdgeReference,
+  type HoleParameters,
   type RevolveFeature,
   type SketchEntity,
   type SketchFeature,
@@ -19,6 +22,7 @@ import {
 } from '../core/model'
 import { normalizeArc } from '../core/arc-geometry'
 import { anchorEdgeReferences } from '../core/edge-anchor'
+import { holeVolume } from '../core/hole'
 import { buildOperationChain } from './operation-chain'
 import { evaluateOperations } from './evaluate-chain'
 import { edgeGeometry } from './fillet-apply'
@@ -95,10 +99,7 @@ function revolveOf(sketch: SketchFeature, angle: number, axis: 'X' | 'Y', index 
  * evaluation rather than deleted directly — see `ChainEvaluation.release`.
  */
 function withSolid<T>(features: Feature[], read: (shape: Shape3D) => T): T {
-  const last = [...features].reverse().find(
-    (feature): feature is ExtrudeFeature | RevolveFeature | Extract<Feature, { kind: 'fillet' }> =>
-      feature.kind === 'extrude' || feature.kind === 'revolve' || feature.kind === 'fillet',
-  )
+  const last = [...features].reverse().find(isSolidFeature)
   if (!last) throw new Error('The fixture has no solid-producing feature.')
   const evaluation = evaluateOperations(buildOperationChain(last, features))
   try {
@@ -330,6 +331,22 @@ describe('golden parts', () => {
       expect(resolvedVolume([...base, chamfer])).toBeCloseTo(
         Math.PI * (25 ** 2 - 10 ** 2) * 5 * angle / 360 - 0.5 * (25 - 1 / 3) * angle * Math.PI / 180, 4)
     }
+  })
+
+  it('drills simple, counterbored and countersunk holes at sketch points', () => {
+    // A 40 × 30 × 6 plate, and a sketch of three points lying on its top face.
+    const base = sketchOf(rectangle([0, 0], [40, 30]), 1)
+    const plate: Feature[] = [base, extrudeOf(base, 6)]
+    const points = sketchOf([[8, 15], [20, 15], [32, 15]].map(([x, y]) => ({ id: createId(), type: 'point' as const, position: [x, y] as Vec2, construction: false })), 2)
+    points.parameters.planeOffset = 6
+    const drilled = (parameters: HoleParameters) => volumeOf([...plate, points, createHoleFeature(points.id, 1, parameters)])
+    const sizes: HoleParameters = { form: 'simple', diameter: 3.4, depth: 4, through: true, headDiameter: 6.5, headDepth: 3.3, countersinkAngle: 90 }
+
+    // Through all is the full 6 mm, however far "through" reaches past it.
+    expect(drilled(sizes)).toBeCloseTo(40 * 30 * 6 - 3 * holeVolume(sizes, 6), 4)
+    expect(drilled({ ...sizes, through: false })).toBeCloseTo(40 * 30 * 6 - 3 * holeVolume(sizes, 4), 4)
+    expect(drilled({ ...sizes, form: 'counterbore' })).toBeCloseTo(40 * 30 * 6 - 3 * holeVolume({ ...sizes, form: 'counterbore' }, 6), 4)
+    expect(drilled({ ...sizes, form: 'countersink' })).toBeCloseTo(40 * 30 * 6 - 3 * holeVolume({ ...sizes, form: 'countersink' }, 6), 4)
   })
 
   it('revolves a solid cylinder when the profile meets the axis', () => {

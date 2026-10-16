@@ -4,8 +4,10 @@ import type { SketchFeature, Vec3 } from '../core/model'
  * A finished sketch as line-segment positions in world space, for drawing it
  * in the scene, with construction geometry apart so it can be drawn dashed.
  * Circles and arcs are cut into segments in proportion to how far round they
- * go, 96 to a full turn and never fewer than 8.
+ * go, 96 to a full turn and never fewer than 8. A point is a small cross.
  */
+const POINT_ARM_MM = 0.75
+
 export function sketchWirePositions(sketch: SketchFeature): { profile: number[]; construction: number[] } {
   const offset = sketch.parameters.planeOffset
   const world = (u: number, v: number): Vec3 => {
@@ -19,6 +21,12 @@ export function sketchWirePositions(sketch: SketchFeature): { profile: number[];
     const positions = entity.construction ? construction : profile
     if (entity.type === 'line') {
       positions.push(...world(...entity.start), ...world(...entity.end))
+      continue
+    }
+    if (entity.type === 'point') {
+      // A small cross, so a hole position reads in the 3D view.
+      const [u, v] = entity.position
+      positions.push(...world(u - POINT_ARM_MM, v), ...world(u + POINT_ARM_MM, v), ...world(u, v - POINT_ARM_MM), ...world(u, v + POINT_ARM_MM))
       continue
     }
     // A circle is the whole turn; an arc is only the part it sweeps, so both

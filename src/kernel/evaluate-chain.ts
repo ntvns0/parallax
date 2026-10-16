@@ -1,4 +1,6 @@
-import { draw, drawCircle, type Shape3D } from 'replicad'
+import { draw, drawCircle, Plane, type Shape3D } from 'replicad'
+import { holeSection, HOLE_OVERSHOOT_MM } from '../core/hole'
+import type { Vec3 } from '../core/model'
 import { arcAlong, type ClosedProfile, type ProfileRegion } from '../core/sketch'
 import { arcMidPoint } from '../core/arc-geometry'
 import { extrudeExtent } from './extrude-extent'
@@ -8,6 +10,7 @@ import type {
   KernelExtrudeOperation,
   KernelFeatureDiagnostic,
   KernelFilletOperation,
+  KernelHoleOperation,
   KernelOperation,
   KernelRevolveOperation,
 } from './kernel-types'
@@ -121,6 +124,51 @@ function buildRevolveTool(operation: KernelRevolveOperation): Shape3D {
   return tool
 }
 
+const cross = (a: Vec3, b: Vec3): Vec3 => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]]
+
+/** Any unit vector square to `direction`. */
+function perpendicular(direction: Vec3): Vec3 {
+  const helper: Vec3 = Math.abs(direction[2]) < 0.9 ? [0, 0, 1] : [1, 0, 0]
+  const out = cross(helper, direction)
+  const length = Math.hypot(...out)
+  return out.map((value) => value / length) as Vec3
+}
+
+/**
+ * Every hole of one feature, fused into a single tool. Each is its
+ * half-section drawn on a plane through its own axis — out from the axis
+ * along x, down into the material along y — and revolved a full turn.
+ *
+ * "Through" is as deep as the farthest corner of the solid's box from the
+ * hole, which is through everything there is in any direction.
+ */
+function buildHoleTool(operation: KernelHoleOperation, solid: Shape3D): Shape3D {
+  const [min, max] = solid.boundingBox.bounds
+  let tool: Shape3D | null = null
+  for (const placement of operation.placements) {
+    const reach = Math.max(...[min, max].flatMap((x) => [min, max].flatMap((y) => [min, max].map((z) =>
+      Math.hypot(x[0] - placement.origin[0], y[1] - placement.origin[1], z[2] - placement.origin[2])))))
+    const depth = operation.parameters.through ? reach + HOLE_OVERSHOOT_MM : operation.parameters.depth
+    const section = holeSection(operation.parameters, depth)
+    const radial = perpendicular(placement.direction)
+    const plane = new Plane(placement.origin, radial, cross(radial, placement.direction))
+    const pen = draw(section[0])
+    section.slice(1).forEach((point) => pen.lineTo(point))
+    const bore = step('holeRevolve', () => pen.close().sketchOnPlane(plane).revolve(placement.direction, { origin: placement.origin }) as Shape3D)
+    plane.delete()
+    if (!tool) {
+      tool = bore
+      continue
+    }
+    const previous: Shape3D = tool
+    tool = step('holeFuse', () => previous.fuse(bore) as Shape3D)
+    previous.delete()
+    bore.delete()
+  }
+  if (!tool) throw new Error('The hole sketch has no points to drill.')
+  return tool
+}
+
 /**
  * Shapes the caller must not free.
  *
@@ -192,6 +240,20 @@ function applyOperations(
       // Every fillet in the group may have been skipped, in which case the
       // solid passed straight through and must not be freed.
       if (shape !== unfilleted) release(unfilleted)
+      onPrefix?.(index, shape, [...unresolved])
+      continue
+    }
+
+    if (operation.type === 'hole') {
+      // Holes need something to drill. Before any solid there is nothing to do.
+      if (!shape) continue
+      const previous: Shape3D = shape
+      const tool = step('buildHoleTool', () => buildHoleTool(operation, previous))
+      shape = step('holeCut', () => previous.cut(tool) as Shape3D)
+      step('holeCutDelete', () => {
+        release(previous)
+        release(tool)
+      })
       onPrefix?.(index, shape, [...unresolved])
       continue
     }

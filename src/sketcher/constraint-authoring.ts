@@ -33,8 +33,12 @@ function isRound(entity: SketchEntity): entity is Extract<SketchEntity, { type: 
   return entity.type === 'circle' || entity.type === 'arc'
 }
 
-/** Entities with two ends that can be joined to something: lines and arcs. */
+/**
+ * The ends an entity can be joined by: a line's or an arc's two, or a lone
+ * point, which is its own single end. A circle has none.
+ */
 function endpointsOf(entity: SketchEntity): { ref: SketchPointRef; point: Vec2 }[] {
+  if (entity.type === 'point') return [{ ref: 'center', point: entity.position }]
   if (entity.type === 'line') {
     return [{ ref: 'start', point: entity.start }, { ref: 'end', point: entity.end }]
   }
@@ -59,7 +63,7 @@ function nearestPoint(entity: SketchEntity, target: Vec2): { ref: SketchPointRef
   return best
 }
 
-/** The point a point constraint means: a round entity's centre, or the end nearest `target`. */
+/** The point a point constraint means: a round entity's centre, a lone point, or the end nearest `target`. */
 function pointFor(entity: SketchEntity, target: Vec2): { ref: SketchPointRef; point: Vec2 } {
   return isRound(entity) ? { ref: 'center', point: entity.center } : nearestPoint(entity, target)
 }
@@ -144,7 +148,7 @@ export function availableConstraints(entities: SketchEntity[], selectedIds: stri
     options.push({ type: 'tangent', label: 'Tangent', hint: 'Meet smoothly, with no corner' })
   }
 
-  if (endpointsOf(first).length && endpointsOf(second).length) {
+  if (joinablePoints(first, second).length && joinablePoints(second, first).length) {
     options.push({ type: 'coincident', label: 'Join', hint: 'Hold the nearest two ends together' })
   }
 
@@ -164,6 +168,15 @@ export function availableConstraints(entities: SketchEntity[], selectedIds: stri
 }
 
 /**
+ * The points of `entity` that Join can use against `other`: its ends, and its
+ * centre too when `other` is a lone point, which is how a point goes to the
+ * centre of a circle.
+ */
+function joinablePoints(entity: SketchEntity, other: SketchEntity) {
+  return other.type === 'point' ? pointsOf(entity) : endpointsOf(entity)
+}
+
+/**
  * The nearest pair of ends between two entities.
  *
  * Joining geometry means joining the ends the user already put next to each
@@ -172,8 +185,8 @@ export function availableConstraints(entities: SketchEntity[], selectedIds: stri
  */
 function nearestEnds(first: SketchEntity, second: SketchEntity): [SketchPointRef, SketchPointRef] | null {
   let best: { refs: [SketchPointRef, SketchPointRef]; distance: number } | null = null
-  for (const a of endpointsOf(first)) {
-    for (const b of endpointsOf(second)) {
+  for (const a of joinablePoints(first, second)) {
+    for (const b of joinablePoints(second, first)) {
       const distance = Math.hypot(a.point[0] - b.point[0], a.point[1] - b.point[1])
       if (!best || distance < best.distance) best = { refs: [a.ref, b.ref], distance }
     }
@@ -247,7 +260,7 @@ export function describeConstraint(constraint: SketchConstraint, entities: Sketc
     const index = entities.findIndex((entity) => entity.id === id)
     if (index < 0) return '?'
     const entity = entities[index]
-    const kind = entity.type === 'line' ? 'Line' : entity.type === 'arc' ? 'Arc' : 'Circle'
+    const kind = { line: 'Line', arc: 'Arc', circle: 'Circle', point: 'Point' }[entity.type]
     return `${kind} ${index + 1}`
   })
   return names.join(' · ')

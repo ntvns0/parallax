@@ -245,3 +245,13 @@ describe('pickTrimTarget', () => {
     expect(pickTrimTarget(upper, [0, -5], 0.5)).toBeNull()
   })
 })
+
+describe('trimming past lone points', () => {
+  it('neither cuts a point nor lets one divide a line', () => {
+    const edge = line('edge', [0, 0], [10, 0])
+    const marker = { id: 'marker', type: 'point' as const, position: [5, 0] as [number, number], construction: false }
+    expect(pickTrimTarget([marker], [5, 0], 1)).toBeNull()
+    // With nothing crossing it, the whole line goes, point or no point.
+    expect(trimSketchEntity([edge, marker], [], 'edge', [2, 0])?.entities).toEqual([marker])
+  })
+})

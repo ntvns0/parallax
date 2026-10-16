@@ -329,6 +329,7 @@ function anchorForEntity(entity: SketchEntity): SketchAnchor {
 
 /** The point an anchor pins, for any entity kind. */
 function anchoredPoint(entity: SketchEntity, point: SketchAnchor['point']): Vec2 {
+  if (entity.type === 'point') return entity.position
   if (entity.type === 'circle') return entity.center
   if (entity.type === 'arc') return point === 'center' ? entity.center : arcStartPoint(entity)
   return point === 'start' ? entity.start : entity.end
@@ -433,6 +434,7 @@ export function sketchBounds(entities: SketchEntity[]) {
   const points: Vec2[] = []
   for (const entity of entities) {
     if (entity.type === 'line') points.push(entity.start, entity.end)
+    else if (entity.type === 'point') points.push(entity.position)
     // An arc reaches its full radius only where it crosses an axis, so its box
     // is usually smaller than the circle it was cut from.
     else if (entity.type === 'arc') {
@@ -471,7 +473,9 @@ export function scaleSketchEntities(entities: SketchEntity[], axis: 0 | 1, targe
   // An arc's angles survive the move untouched.
   return entities.map((entity) => entity.type === 'line'
     ? { ...entity, start: scalePoint(entity.start), end: scalePoint(entity.end) }
-    : { ...entity, center: scalePoint(entity.center), radius: entity.radius * (axis === 0 && bounds.height === 0 ? ratio : 1) })
+    : entity.type === 'point'
+      ? { ...entity, position: scalePoint(entity.position) }
+      : { ...entity, center: scalePoint(entity.center), radius: entity.radius * (axis === 0 && bounds.height === 0 ? ratio : 1) })
 }
 
 export function connectedSketchEntityIds(sketch: SketchFeature, rootId: string) {
@@ -498,9 +502,9 @@ export function translateSketchEntities(entities: SketchEntity[], entityIds: Set
     if (!entityIds.has(entity.id)) return entity
     // Circles and arcs both move by their centre; an arc's angles describe a
     // direction, which translation leaves alone.
-    return entity.type === 'line'
-      ? { ...entity, start: translatePoint(entity.start), end: translatePoint(entity.end) }
-      : { ...entity, center: translatePoint(entity.center) }
+    if (entity.type === 'line') return { ...entity, start: translatePoint(entity.start), end: translatePoint(entity.end) }
+    if (entity.type === 'point') return { ...entity, position: translatePoint(entity.position) }
+    return { ...entity, center: translatePoint(entity.center) }
   })
 }
 

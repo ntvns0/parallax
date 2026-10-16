@@ -1,6 +1,6 @@
 import { arcFromCenterAndPoints, arcFromThreePoints, tangentArcFromEndpoint } from '../core/arc-geometry'
 import type { FaceSnap } from '../core/face-reference'
-import { createId, type ArcEntity, type LineEntity, type SketchConstraint, type SketchEntity, type Vec2 } from '../core/model'
+import { createId, type ArcEntity, type LineEntity, type PointEntity, type SketchConstraint, type SketchEntity, type SketchPointRef, type Vec2 } from '../core/model'
 import type { SketchEntitySnap } from './entity-snap'
 import type { TangentArcSource } from './tangent-arc'
 
@@ -59,7 +59,7 @@ export function circleGeometry(center: Vec2, through: Vec2): GeometryAddition {
  * endpoint, coincident; on a midpoint, the midpoint; on a ruler division, on
  * the line at that distance; on a line, on the line.
  */
-export function snapConstraints(entityId: string, pointRef: 'start' | 'end', target: ActiveSnap | null): SketchConstraint[] {
+export function snapConstraints(entityId: string, pointRef: SketchPointRef, target: ActiveSnap | null): SketchConstraint[] {
   if (!target || target.source !== 'entity') return []
   if (target.kind === 'endpoint' && target.pointRef) {
     return [{ id: createId(), type: 'coincident', entityIds: [entityId, target.entityIds[0]], pointRefs: [pointRef, target.pointRef] }]
@@ -82,6 +82,12 @@ export function snapConstraints(entityId: string, pointRef: 'start' | 'end', tar
   return target.entityIds.map((targetId) => ({
     id: createId(), type: 'pointOnLine' as const, entityIds: [entityId, targetId], pointRefs: [pointRef],
   }))
+}
+
+/** A lone point, tied to whatever it snapped to, as a line end would be. */
+export function pointGeometry(at: Vec2, snap: ActiveSnap | null): GeometryAddition {
+  const entity: PointEntity = { id: createId(), type: 'point', position: at, construction: false }
+  return { entities: [entity], constraints: snapConstraints(entity.id, 'center', snap) }
 }
 
 /**

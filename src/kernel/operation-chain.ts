@@ -1,7 +1,8 @@
 import { currentEdgeReference } from '../core/edge-anchor'
 import { currentPlaneOffset } from '../core/face-anchor'
 import { planeNormalDistance } from '../core/extrude-direction'
-import type { Feature } from '../core/model'
+import { holePlacements, holeProblem } from '../core/hole'
+import type { Feature, SolidFeature } from '../core/model'
 import { revolveAxis } from '../core/revolve-axis'
 import { getProfileRegions } from '../core/sketch'
 import type { KernelOperation } from './kernel-types'
@@ -18,7 +19,7 @@ import type { KernelOperation } from './kernel-types'
  * This is also the cache key for exact evaluation, which is why it has to be a
  * pure function of the document.
  */
-export function buildOperationChain(feature: Extract<Feature, { kind: 'extrude' | 'fillet' | 'revolve' }>, features: Feature[]): KernelOperation[] {
+export function buildOperationChain(feature: SolidFeature, features: Feature[]): KernelOperation[] {
   const featureIndex = features.findIndex((candidate) => candidate.id === feature.id)
   const relevant = features.slice(0, featureIndex >= 0 ? featureIndex + 1 : features.length)
 
@@ -36,6 +37,19 @@ export function buildOperationChain(feature: Extract<Feature, { kind: 'extrude' 
         filletShape: candidate.parameters.filletShape ?? 'rational',
         edges: candidate.edges.map((edge) => currentEdgeReference(edge, features)),
       })
+      continue
+    }
+    if (candidate.kind === 'hole') {
+      // A hole with no points drills nothing, and is left out so it cannot
+      // change the cache key of the chain it sits in.
+      const placements = holePlacements(candidate, features)
+      if (!placements.length) continue
+      // The preset is intent for callouts, not geometry, so it stays out of the key.
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const { preset, ...parameters } = candidate.parameters
+      // Sizes that cannot make a hole drill nothing; the property panel says why.
+      if (holeProblem(candidate.parameters)) continue
+      operations.push({ type: 'hole' as const, featureId: candidate.id, featureName: candidate.name, placements, parameters })
       continue
     }
     if (candidate.kind === 'extrude') {
@@ -125,6 +139,7 @@ export function describeOperationChain(operations: KernelOperation[]) {
           axisDirection: operation.axisDirection,
           regions: operation.regions.map((region) => ({ outer: region.outer.type, holes: region.holes.length })),
         }
+      : operation.type === 'hole' ? { form: operation.parameters.form, holes: operation.placements.length }
       : { radius: operation.radius, selectedEdges: operation.edges.length }),
   }))
 }

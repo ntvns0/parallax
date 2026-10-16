@@ -24,11 +24,11 @@ function isRound(entity: SketchEntity): entity is Extract<SketchEntity, { type: 
   return entity.type === 'circle' || entity.type === 'arc'
 }
 
-/** Whether `ref` names a point this entity has: line ends, arc ends and centre, a circle's centre. */
+/** Whether `ref` names a point this entity has: line ends, arc ends and centre, a circle's centre, a lone point's position. */
 function hasPoint(entity: SketchEntity | undefined, ref: SketchPointRef | undefined): ref is SketchPointRef {
   if (!entity || !ref) return false
   if (entity.type === 'line') return ref === 'start' || ref === 'end'
-  if (entity.type === 'circle') return ref === 'center'
+  if (entity.type === 'circle' || entity.type === 'point') return ref === 'center'
   return true
 }
 
@@ -120,8 +120,7 @@ export function constraintPrimitive(
 
     case 'pointDistance': {
       const [pointRef, datumRef] = constraint.pointRefs ?? []
-      if ((first?.type !== 'line' && first?.type !== 'arc') || second?.type !== 'line'
-        || (pointRef !== 'start' && pointRef !== 'end')
+      if (!hasPoint(first, pointRef) || second?.type !== 'line'
         || (datumRef !== 'start' && datumRef !== 'end')
         || typeof constraint.value !== 'number') return null
       return {

@@ -17,6 +17,7 @@ function numbers(values: readonly number[]): string {
 }
 
 function entitySignature(entity: SketchEntity): string {
+  if (entity.type === 'point') return `p:${entity.id}:${numbers(entity.position)}:${entity.construction}`
   if (entity.type === 'circle') {
     return `c:${entity.id}:${numbers(entity.center)}:${entity.radius}:${entity.construction}`
   }
@@ -63,6 +64,7 @@ function featureSignature(feature: Feature): string {
   if (feature.kind === 'fillet') {
     return `${base}:${feature.edges.map(edgeSignature).join(';')}`
   }
+  if (feature.kind === 'hole') return `${base}:${feature.sketchId}`
   return base
 }
 

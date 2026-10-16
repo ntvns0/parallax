@@ -15,7 +15,7 @@ import { buildLBracket, lBracketVolume } from './parts/l-bracket'
 
 type Progress = { id: string; name: string; missing: string[] }
 const progress: Progress[] = [
-  { id: 'A1', name: 'Screw-mount L-bracket', missing: ['Hole feature', 'linear pattern'] },
+  { id: 'A1', name: 'Screw-mount L-bracket', missing: ['linear pattern'] },
   { id: 'A2', name: 'Desk cable clip', missing: ['sketch offset', 'mirror', 'Hole feature'] },
   { id: 'A3', name: 'Electronics enclosure with lid', missing: ['shell', 'multiple bodies', 'rectangular pattern', 'Hole feature', 'per-body export'] },
   { id: 'A4', name: 'Parametric knob', missing: ['circular pattern'] },
@@ -34,7 +34,7 @@ for (const part of progress) {
   if (part.missing.length) it.todo(`${part.id} ${part.name}: complete once Parallax has ${part.missing.join(', ')}`)
 }
 
-describe('A1 screw-mount L-bracket (body, inside fillet, outside chamfer)', () => {
+describe('A1 screw-mount L-bracket (body, inside fillet, outside chamfer, countersunk holes)', () => {
   const nominal = { t: 4, length: 50, height: 30, width: 40, r: 4, c: 1 }
 
   it('builds to the hand-computed geometry', () => {

@@ -213,6 +213,7 @@ const TOOL_ICONS: Record<EditorTool, ReactNode> = {
   arc: <Spline />,
   'three-point-arc': <Spline />,
   'tangent-arc': <Spline />,
+  point: <Crosshair />,
   trim: <Scissors />,
 }
 

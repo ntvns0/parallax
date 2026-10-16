@@ -1,5 +1,6 @@
 import type { ProfileRegion } from '../core/sketch'
-import type { FilletEdgeReference, SketchPlane, Vec3 } from '../core/model'
+import type { HolePlacement } from '../core/hole'
+import type { FilletEdgeReference, HoleParameters, SketchPlane, Vec3 } from '../core/model'
 import type { DrawingViewId, OrthographicViewId, ProjectedView } from '../drawing/drawing-types'
 import type { FeatureDiagnostic } from '../core/diagnostics'
 
@@ -47,7 +48,15 @@ export type KernelRevolveOperation = {
   operation: 'newBody' | 'add' | 'cut'
 }
 
-export type KernelOperation = KernelExtrudeOperation | KernelFilletOperation | KernelRevolveOperation
+export type KernelHoleOperation = {
+  type: 'hole'
+  featureId: string
+  featureName: string
+  placements: HolePlacement[]
+  parameters: HoleParameters
+}
+
+export type KernelOperation = KernelExtrudeOperation | KernelFilletOperation | KernelRevolveOperation | KernelHoleOperation
 
 /** What the caller wants back once the feature chain has been evaluated. */
 export type KernelOutput = 'mesh' | KernelExportFormat | 'projection'

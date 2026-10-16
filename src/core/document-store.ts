@@ -5,6 +5,7 @@ import {
   createExtrudeFeature,
   createRevolveFeature,
   createFilletFeature,
+  createHoleFeature,
   createFeature,
   type CadDocument,
   type DisplayUnits,
@@ -27,6 +28,7 @@ import {
 import { renameParameterReferences, resolveDocumentFormulas, withoutConstraintFormula } from './parameters'
 import type { FeatureDiagnostic } from './diagnostics'
 import { normalizeDocument } from './document-migration'
+import { defaultHoleParameters } from './hole'
 import { logDiagnostic } from './diagnostics'
 import * as storage from './project-storage'
 import type { ProjectSummary, RecoverySnapshot } from './project-storage'
@@ -59,7 +61,7 @@ type EditorState = {
   projects: ProjectSummary[]
   recoverySnapshots: RecoverySnapshot[]
   activeSketchId: string | null
-  sketchTool: 'select' | 'line' | 'rectangle' | 'circle' | 'arc' | 'three-point-arc' | 'tangent-arc' | 'trim'
+  sketchTool: 'select' | 'line' | 'rectangle' | 'circle' | 'arc' | 'three-point-arc' | 'tangent-arc' | 'point' | 'trim'
   /**
    * Formulas that no longer evaluate, by the feature that holds them.
    *
@@ -120,6 +122,8 @@ type EditorState = {
   extrudeSketch: (sketchId: string, distance?: number) => void
   revolveSketch: (sketchId: string, angle?: number) => void
   addFillet: (feature: FilletFeature) => void
+  /** Drill a hole at each point of a sketch into the solid before it. */
+  addHoles: (sketchId: string) => void
 }
 
 const persistenceService = new ProjectPersistenceService()
@@ -655,6 +659,16 @@ export const useDocumentStore = create<EditorState>((set, get) => ({
     set((state) => {
       if (!feature.edges.length) return state
       return mutate(state, (document) => document.features.push(feature), feature.id)
+    }),
+
+  addHoles: (sketchId) =>
+    set((state) => {
+      const feature = createHoleFeature(sketchId, state.document.features.filter((item) => item.kind === 'hole').length + 1, defaultHoleParameters())
+      return mutate(state, (document) => {
+        document.features.push(feature)
+        const sketch = document.features.find((item) => item.id === sketchId)
+        if (sketch) sketch.visible = false
+      }, feature.id)
     }),
 }))
 

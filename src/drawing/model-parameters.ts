@@ -1,3 +1,4 @@
+import { holeCallout, holePlacements } from '../core/hole'
 import type { BoxParameters, CylinderParameters, DocumentParameter, Feature, SphereParameters } from '../core/model'
 import { resolveParameterTable } from '../core/parameters'
 import type { ParameterRow } from './sheet-furniture'
@@ -67,8 +68,21 @@ export function describeModelParameters(
         rows.push({ label: `${feature.name} angle`, value: `${Math.round(feature.parameters.angle * 10) / 10}°` })
         break
       case 'fillet':
-        rows.push({ label: `${feature.name} radius`, value: `R${formatValue(feature.parameters.radius)}` })
+        rows.push(feature.parameters.blend === 'chamfer'
+          ? { label: `${feature.name} distance`, value: `${formatValue(feature.parameters.radius)} × 45°` }
+          : { label: `${feature.name} radius`, value: `R${formatValue(feature.parameters.radius)}` })
         break
+      case 'hole': {
+        // Called out from the feature's own intent, preset and all, rather
+        // than read back off circles in a view.
+        const count = holePlacements(feature, features).length
+        const callout = holeCallout(feature.parameters, formatValue)
+        rows.push({
+          label: `${feature.name}${count > 1 ? ` ×${count}` : ''}`,
+          value: feature.parameters.preset ? `${feature.parameters.preset}: ${callout}` : callout,
+        })
+        break
+      }
       case 'sketch':
         break
     }
@@ -81,7 +95,7 @@ export function describeModelParameters(
 export function filletRadii(features: Feature[]): number[] {
   const radii = new Set<number>()
   for (const feature of features) {
-    if (feature.kind === 'fillet') radii.add(feature.parameters.radius)
+    if (feature.kind === 'fillet' && feature.parameters.blend !== 'chamfer') radii.add(feature.parameters.radius)
     if (feature.kind === 'extrude' && feature.parameters.edgeRadius > 0) radii.add(feature.parameters.edgeRadius)
   }
   return [...radii].sort((a, b) => b - a)

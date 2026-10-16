@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import * as THREE from 'three'
-import type { ExtrudeFeature, RevolveFeature, Feature, FilletFeature, SketchFeature } from '../core/model'
+import { isSolidFeature, type ExtrudeFeature, type RevolveFeature, type Feature, type FilletFeature, type SketchFeature, type SolidFeature } from '../core/model'
 import { getProfileRegions } from '../core/sketch'
 import { buildOperationChain, describeOperationChain } from './operation-chain'
 import type { KernelExportFormat, KernelFeatureDiagnostic, KernelMesh, KernelRequest, ViewportMeshResult } from './kernel-types'
@@ -24,7 +24,7 @@ const kernelClient = new KernelClient({
   onStatusChange: (status, message) => useKernelStore.setState({ status, message }),
 })
 
-type ExactFeature = ExtrudeFeature | FilletFeature | RevolveFeature
+type ExactFeature = SolidFeature
 
 export function cachedExactMesh(feature: ExactFeature, features: Feature[]): KernelMesh | null {
   const operations = buildOperationChain(feature, features)
@@ -96,11 +96,8 @@ export function exportExactStl(feature: ExtrudeFeature | RevolveFeature, sketch:
 }
 
 /** The last feature in the history that produces a solid, or null if there is none. */
-function finalSolidFeature(features: Feature[]): ExtrudeFeature | RevolveFeature | FilletFeature | null {
-  return [...features].reverse().find(
-    (f): f is ExtrudeFeature | RevolveFeature | FilletFeature =>
-      f.kind === 'extrude' || f.kind === 'revolve' || f.kind === 'fillet'
-  ) ?? null
+function finalSolidFeature(features: Feature[]): SolidFeature | null {
+  return [...features].reverse().find(isSolidFeature) ?? null
 }
 
 export function hasExactSolid(features: Feature[]): boolean {

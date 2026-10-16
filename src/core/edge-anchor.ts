@@ -1,7 +1,7 @@
 import { arcEndPoint, arcMidPoint, arcPointAt, arcStartPoint, locateOnArc } from './arc-geometry'
 import { extrudeSweepRange } from './extrude-direction'
 import { currentPlaneOffset } from './face-anchor'
-import type { EdgeAnchor, ExtrudeFeature, Feature, FilletEdgeReference, RevolveFeature, SketchEntity, SketchFeature, Vec2, Vec3 } from './model'
+import { isCurve, type CurveEntity, type EdgeAnchor, type ExtrudeFeature, type Feature, type FilletEdgeReference, type RevolveFeature, type SketchFeature, type Vec2, type Vec3 } from './model'
 import { axialPosition, revolveAxis, rotateAboutAxis } from './revolve-axis'
 import { projectToSketchPlane, sketchPlaneOffset, sketchPointToWorld } from './sketch-plane'
 import { ANCHOR_MATCH_DISTANCE_MM } from './tolerance-policy'
@@ -48,13 +48,13 @@ function revolutions(features: Feature[]): { revolve: RevolveFeature; sketch: Sk
 }
 
 /** An entity's two ends, or none for a circle, which has no vertex to sweep. */
-function entityEnds(entity: SketchEntity): [Vec2, Vec2] | null {
+function entityEnds(entity: CurveEntity): [Vec2, Vec2] | null {
   if (entity.type === 'circle') return null
   return entity.type === 'arc' ? [arcStartPoint(entity), arcEndPoint(entity)] : [entity.start, entity.end]
 }
 
 /** Where on an entity a point sits, and how far it is from the curve. */
-function locateOnEntity(entity: SketchEntity, point: Vec2): { t: number; distance: number } | null {
+function locateOnEntity(entity: CurveEntity, point: Vec2): { t: number; distance: number } | null {
   if (entity.type === 'circle') {
     if (entity.radius <= 0) return null
     const dx = point[0] - entity.center[0]
@@ -91,7 +91,7 @@ function locateOnEntity(entity: SketchEntity, point: Vec2): { t: number; distanc
  * A circle has no vertices; its extrusion carries a seam edge instead, which
  * the kernel may place at any parameter, so any position on it is legitimate.
  */
-function lateralParameter(entity: SketchEntity, point: Vec2): number | null {
+function lateralParameter(entity: CurveEntity, point: Vec2): number | null {
   if (entity.type === 'circle') {
     const located = locateOnEntity(entity, point)
     return located && located.distance <= ANCHOR_MATCH_DISTANCE_MM ? located.t : null
@@ -107,7 +107,7 @@ function lateralParameter(entity: SketchEntity, point: Vec2): number | null {
 }
 
 /** A point on an entity at parameter `t`. */
-function pointOnEntity(entity: SketchEntity, t: number): Vec2 {
+function pointOnEntity(entity: CurveEntity, t: number): Vec2 {
   if (entity.type === 'circle') {
     const angle = t * Math.PI * 2
     return [entity.center[0] + Math.cos(angle) * entity.radius, entity.center[1] + Math.sin(angle) * entity.radius]
@@ -119,9 +119,9 @@ function pointOnEntity(entity: SketchEntity, t: number): Vec2 {
   ]
 }
 
-/** The usable entities of a sketch: construction geometry sweeps nothing. */
-function solidEntities(sketch: SketchFeature) {
-  return sketch.entities.filter((entity) => !entity.construction)
+/** The usable entities of a sketch: construction geometry and lone points sweep nothing. */
+function solidEntities(sketch: SketchFeature): CurveEntity[] {
+  return sketch.entities.filter(isCurve).filter((entity) => !entity.construction)
 }
 
 /**
@@ -205,7 +205,7 @@ function deriveRevolveAnchor(reference: FilletEdgeReference, features: Feature[]
  * revolve's angle, so a full turn starts and ends there with its middle
  * opposite.
  */
-function resolveRevolveAnchor(anchor: Extract<EdgeAnchor, { kind: 'profileRevolve' }>, sketch: SketchFeature, entity: SketchEntity, features: Feature[]): FilletEdgeReference | null {
+function resolveRevolveAnchor(anchor: Extract<EdgeAnchor, { kind: 'profileRevolve' }>, sketch: SketchFeature, entity: CurveEntity, features: Feature[]): FilletEdgeReference | null {
   const built = features.filter((candidate): candidate is RevolveFeature => candidate.kind === 'revolve' && candidate.sketchId === sketch.id)
   const revolve = built.find((candidate) => candidate.id === anchor.featureId) ?? built[0]
   const ends = entityEnds(entity)
@@ -230,7 +230,7 @@ export function resolveEdgeAnchor(anchor: EdgeAnchor, features: Feature[]): Fill
   const sketch = features.find((candidate) => candidate.id === anchor.sketchId)
   if (sketch?.kind !== 'sketch') return null
   const entity = sketch.entities.find((candidate) => candidate.id === anchor.entityId)
-  if (!entity || entity.construction) return null
+  if (!entity || entity.construction || !isCurve(entity)) return null
   if (anchor.kind === 'profileRevolve') return resolveRevolveAnchor(anchor, sketch, entity, features)
 
   // Prefer the extrusion the anchor was derived against. Falling back to the

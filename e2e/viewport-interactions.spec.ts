@@ -51,6 +51,36 @@ test('starts a sketch on a picked face of the part', async ({ page }) => {
   expect(sketch.kind === 'sketch' && sketch.attachment?.faceLabel).toBe('Top face')
 })
 
+test('drills a hole at a point sketched on a face of the part', async ({ page }) => {
+  await plate(page)
+  await page.getByRole('button', { name: 'Create sketch' }).click()
+  await page.getByRole('button', { name: /Pick a model face/ }).click()
+  const banner = page.locator('.face-pick-banner')
+  const at = await findViewportPoint(page, async () => ((await banner.textContent()) ?? '').includes('Top face'))
+  await page.mouse.click(at.x, at.y)
+  await expect(page.locator('svg.sketch-surface')).toBeVisible()
+
+  await page.getByRole('button', { name: /^Point/ }).click()
+  const spot = await sketchPoint(page, 10, 5)
+  await page.mouse.click(spot.x, spot.y)
+  await expect(page.locator('.sketch-lone-point')).toHaveCount(1)
+  await page.getByRole('button', { name: 'Finish sketch' }).click()
+
+  await page.getByTitle('Hole at sketch points').first().click()
+  const hole = (await readDocument(page)).features.find((feature) => feature.kind === 'hole')
+  expect(hole).toMatchObject({ name: 'Hole 1', parameters: { preset: 'M3 clearance', through: true } })
+  await expect(page.locator('.properties-panel')).toContainText('1 point in')
+  await expect(page.locator('.hole-callout')).toHaveText('Ø3.4 THRU')
+  await expect(viewport(page)).toHaveAttribute('data-exact-features', new RegExp(hole!.id), { timeout: 60_000 })
+
+  // A preset resizes it as one choice.
+  await page.getByLabel('Hole preset').selectOption('M3 counterbore')
+  await expect(page.locator('.hole-callout')).toHaveText('Ø3.4 THRU ⌴ Ø6.5 ↧ 3.3')
+  await page.getByTitle('Home view (Isometric Z-up)').click()
+  await expect(viewport(page)).toHaveAttribute('data-exact-features', new RegExp(hole!.id), { timeout: 60_000 })
+  await page.screenshot({ path: test.info().outputPath('counterbored-hole.png') })
+})
+
 test('measures between two snapped points on the part', async ({ page }) => {
   await plate(page)
   await page.getByTitle('Measure points and features').first().click()

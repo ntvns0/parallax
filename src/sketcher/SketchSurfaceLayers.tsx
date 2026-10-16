@@ -137,6 +137,16 @@ export function SketchEntityLayer({
           </g>
         )
       }
+      if (entity.type === 'point') {
+        const [x, y] = [toX(entity.position[0]), toY(entity.position[1])]
+        return (
+          <g key={entity.id} data-entity-id={entity.id} className={className} onPointerDown={drag}>
+            <circle cx={x} cy={y} r="8" className="sketch-point-hit-area" />
+            <path d={`M ${x - 5} ${y} h 10 M ${x} ${y - 5} v 10`} className="sketch-entity sketch-lone-point" />
+            <circle cx={x} cy={y} r="2.6" className="sketch-point" />
+          </g>
+        )
+      }
       return (
         <g key={entity.id} data-entity-id={entity.id} className={className} onPointerDown={drag}>
           <circle cx={toX(entity.center[0])} cy={toY(entity.center[1])} r={entity.radius * scale} className="sketch-hit-area" />

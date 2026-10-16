@@ -457,7 +457,7 @@ button { color: inherit; }
 .status-center { letter-spacing: .08em; }
 .status-center span { color: #34403b; }
 .status-separator { color: #303634; margin: 0 3px; }
-.app-notice { position: fixed; z-index: 95; top: 58px; left: 50%; transform: translateX(-50%); width: min(520px, calc(100vw - 40px)); display: flex; align-items: center; justify-content: space-between; gap: 12px; color: #e9c2c2; background: #321f1ff5; border: 1px solid #774545; border-radius: 7px; padding: 10px 10px 10px 13px; box-shadow: 0 14px 45px #0009; font-size: 9px; line-height: 1.45; }
+.app-notice { position: fixed; z-index: 95; top: 108px; left: 50%; transform: translateX(-50%); width: min(520px, calc(100vw - 40px)); display: flex; align-items: center; justify-content: space-between; gap: 12px; color: #e9c2c2; background: #321f1ff5; border: 1px solid #774545; border-radius: 7px; padding: 10px 10px 10px 13px; box-shadow: 0 14px 45px #0009; font-size: 9px; line-height: 1.45; }
 .app-notice.during-sketch { top: 112px; }
 .app-notice.success { color: #b8eed8; background: #183229f5; border-color: #38745d; }
 .app-notice button { width: 25px; height: 25px; flex: 0 0 auto; display: grid; place-items: center; color: inherit; background: transparent; border: 0; border-radius: 4px; cursor: pointer; }

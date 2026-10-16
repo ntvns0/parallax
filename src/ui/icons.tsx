@@ -68,6 +68,15 @@ export function ChamferFeatureIcon(props: SVGProps<SVGSVGElement>) {
   )
 }
 
+export function HoleFeatureIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" {...props}>
+      <path d="M3 6h4v5h3v9M21 6h-4v5h-3v9" />
+      <path d="M12 3v18" strokeDasharray="2 2" />
+    </svg>
+  )
+}
+
 export function RevolveFeatureIcon(props: SVGProps<SVGSVGElement>) {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" {...props}>
@@ -86,6 +95,7 @@ const KIND_ICONS = {
   extrude: ExtrudeFeatureIcon,
   revolve: RevolveFeatureIcon,
   fillet: FilletFeatureIcon,
+  hole: HoleFeatureIcon,
 } satisfies Record<Feature['kind'], typeof BoxFeatureIcon>
 
 /** The icon for a feature: its kind's, except that a chamfer is not drawn as a fillet. */

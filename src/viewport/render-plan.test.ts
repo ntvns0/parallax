@@ -27,6 +27,12 @@ describe('planSolidRender', () => {
     expect(plan.supersedes.get('f1')).toEqual(['e1'])
   })
 
+  it('keeps a fallback alive while a hole is drilled, as for a fillet', () => {
+    const plan = planSolidRender([extrude('e1', 'newBody'), sketch('s2'), { id: 'h1', kind: 'hole', visible: true }])
+    expect([...plan.rendered]).toEqual(['e1', 'h1'])
+    expect(plan.supersedes.get('h1')).toEqual(['e1'])
+  })
+
   it('never lets a new body delete the body before it', () => {
     const plan = planSolidRender([extrude('e1', 'newBody'), fillet('f1'), extrude('e2', 'newBody')])
     expect(plan.supersedes.get('e2')).toEqual([])

@@ -7,6 +7,7 @@ import {
   circleGeometry,
   distance,
   lineGeometry,
+  pointGeometry,
   rectangleGeometry,
   snapConstraints,
   tangentArcGeometry,
@@ -95,5 +96,18 @@ describe('arc builders', () => {
 
     expect(joined).toBe(true)
     expect(addition.constraints.map((c) => c.type)).toEqual(['coincident', 'tangent', 'radius'])
+  })
+})
+
+describe('pointGeometry', () => {
+  it('places a lone point, tied by its centre to the line it snapped to', () => {
+    const onLine: ActiveSnap = { source: 'entity', kind: 'line', point: [4, 0], entityIds: ['edge'] }
+    const { entities, constraints } = pointGeometry([4, 0], onLine)
+    expect(entities).toEqual([expect.objectContaining({ type: 'point', position: [4, 0], construction: false })])
+    expect(constraints).toEqual([expect.objectContaining({ type: 'pointOnLine', entityIds: [entities[0].id, 'edge'], pointRefs: ['center'] })])
+  })
+
+  it('bounds no profile', () => {
+    expect(getProfileRegions(sketchWith(pointGeometry([1, 1], null).entities))).toEqual([])
   })
 })

@@ -7,12 +7,14 @@ import { parseStoredDocument } from '../core/document-migration'
 import { drivenSketches } from '../core/driven-sketches'
 import {
   createId,
+  isSolidFeature,
   type CadDocument,
   type DocumentParameter,
   type Feature,
   type SketchConstraint,
   type SketchEntity,
   type SketchFeature,
+  type SolidFeature,
   type Vec2,
 } from '../core/model'
 import { resolveDocumentFormulas } from '../core/parameters'
@@ -81,11 +83,8 @@ export function withParameters(document: CadDocument, changes: Record<string, st
   })
 }
 
-type SolidFeature = Extract<Feature, { kind: 'extrude' | 'fillet' | 'revolve' }>
-
 function lastSolid(document: CadDocument): SolidFeature {
-  const last = [...document.features].reverse().find((feature): feature is SolidFeature =>
-    feature.kind === 'extrude' || feature.kind === 'revolve' || feature.kind === 'fillet')
+  const last = [...document.features].reverse().find(isSolidFeature)
   if (!last) throw new Error('The part has no solid-producing feature.')
   return last
 }

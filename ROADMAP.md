@@ -1,6 +1,6 @@
 # Parallax Roadmap
 
-Last updated: October 15, 2026 (scope set to personal 3D-print use, four acceptance parts defined, and a phased plan replaces the old start-here list)
+Last updated: October 15, 2026 (Phase 3 under way: construction geometry, point constraints, chamfer, sketch points and holes are done)
 
 This document tracks what Parallax can do, what the project is actively building, and the milestones required to become a professional browser-native parametric CAD system.
 
@@ -31,13 +31,13 @@ The project is still a pre-alpha. It proves the browser architecture and the pri
 | 3D viewport | ✅ | Z-up grid, cameras, view cube, selection, transform gizmo, weighted edges and part-scaled ambient occlusion |
 | Inspection and measurement | ✅ | Feature inspection and snapped point-to-point measurements with axis deltas |
 | Direct manipulation | 🚧 | Push/pull on the end cap of a sweep edits the owning extrusion as one undo step; fillet handles and on-model dimensions remain |
-| Parametric document | ✅ | Versioned schema (v9), editable feature parameters, named parameters and formulas, serialization |
+| Parametric document | ✅ | Versioned schema (v10), editable feature parameters, named parameters and formulas, serialization |
 | Undo/redo | ✅ | Snapshot history; command-level history is planned |
 | Local persistence | ✅ | IndexedDB multi-project autosave, recovery snapshots, portable project JSON |
 | Primitive features | 🚧 | Editable previews; not exact B-rep features yet |
-| Sketching | 🚧 | Line, rectangle, circle, centre-point arc, trim, corner fillet, snapping, multi-region profiles with holes, and boundaries mixing straight and curved edges |
+| Sketching | 🚧 | Line, rectangle, circle, centre-point arc, point, trim, corner fillet, snapping, multi-region profiles with holes, and boundaries mixing straight and curved edges |
 | Constraint solving | 🚧 | PlaneGCS worker with an explicit anchor; constraints are listed, added, edited, and removed by hand, and conflicts name the geometry |
-| Exact solids | 🚧 | Exact new-body, additive, subtractive, and filleted or chamfered extrusion and revolve are integrated, and both now reach the viewport as B-rep rather than preview geometry; an oversized fillet reports the radius that would fit instead of failing the part |
+| Exact solids | 🚧 | Exact new-body, additive, subtractive, and filleted or chamfered extrusion and revolve, and holes, are integrated, and both now reach the viewport as B-rep rather than preview geometry; an oversized fillet reports the radius that would fit instead of failing the part |
 | STEP export | ✅ | Available for supported exact extrusions and revolves |
 | Boolean modeling | 🚧 | Exact add and cut are integrated; intersect and multi-body management remain |
 | Drawings | 🚧 | Third-angle sheets with a hatched full section and generated dimensions export to PDF and SVG; not associative, no GD&T |
@@ -89,7 +89,7 @@ Every part is checked three ways:
 
 | # | Part | What it exercises | Edit test | Missing today |
 | --- | --- | --- | --- | --- |
-| A1 | **Screw-mount L-bracket.** 40 mm wide, legs of 50 and 30 mm, 4 mm thick, R4 inside corner, 1 mm chamfer on outside edges, two countersunk M4 holes per leg | Face sketches, extrude, fillet, chamfer, Hole, linear pattern | Thickness 4 → 6, hole count 2 → 3 per leg | Hole, linear pattern |
+| A1 | **Screw-mount L-bracket.** 40 mm wide, legs of 50 and 30 mm, 4 mm thick, R4 inside corner, 1 mm chamfer on outside edges, two countersunk M4 holes per leg | Face sketches, extrude, fillet, chamfer, Hole, linear pattern | Thickness 4 → 6, hole count 2 → 3 per leg | Linear pattern |
 | A2 | **Desk cable clip.** Screw-down base, a C-shaped Ø10 cable channel with 2 mm walls and a 7 mm snap opening, symmetric about a centreline, 15 mm deep, one countersunk hole in the base | Arcs, trim, sketch fillet, construction centreline, symmetric constraint, offset, mirror | Channel Ø10 → Ø14, wall 2 → 2.5 | Sketch offset, mirror, Hole |
 | A3 | **Electronics enclosure with lid.** 80 × 50 × 30 mm box, shelled to 2 mm with an open top, R3 vertical edges, four Ø6 standoffs with Ø4.2 heat-set insert holes in a rectangular pattern, a USB-C cutout in a side wall, and a separate lid body with a lip set by a `clearance = 0.2 mm` parameter and a pattern of vent slots | Shell, multiple bodies, rectangular pattern, side-face sketches, Hole, per-body export | Box 80 × 50 → 100 × 60, clearance 0.2 → 0.3 | Shell, multiple bodies, rectangular pattern, Hole, per-body export |
 | A4 | **Parametric knob.** A revolved body, a 6 mm D-shaft bore with the flat at 4.5 mm plus clearance, 24 grip grooves in a circular pattern, and a chamfered top edge | Revolve, construction axis, circular pattern, chamfer, formula-driven dimensions | Groove count 24 → 18, shaft 6 → 5 | Circular pattern |
@@ -386,15 +386,48 @@ it needs one.
       chamfer too.
     - `e2e/viewport-interactions.spec.ts` picks a plate edge, chamfers it 1 mm,
       and checks the saved feature.
-- ⬜ **3.4 Hole feature** (A1, A2, A3). The existing roadmap item, scoped for
-  printing:
-  - Simple, counterbored, and countersunk holes; blind and through-all.
-  - Placed from sketch points.
-  - Sizes from a table with print-relevant presets: M2–M5 clearance holes and
-    heat-set insert bores.
-  - Exact boolean geometry, and intent kept in the document so the drawing
-    callouts read it rather than inferring it.
-  - Threads stay as metadata only.
+- ✅ **3.4 Hole feature** (A1, A2, A3). Done, apart from the two follow-ups
+  at the end.
+  - Sketches have lone points (the **P** tool), schema 10. A point is named
+    by its `center` ref, so every constraint that takes a centre takes a
+    point: on line, distance to line, midpoint, along a line, on a curve,
+    symmetric, and Join, which can put a point on a circle's centre.
+    Points bound no profile and are neither cut nor cutters for trim.
+  - A Hole feature drills at every non-construction point of a sketch:
+    simple, counterbored or countersunk, blind or through all. It drills
+    against a face sketch's outward normal, or against a base-plane sketch's
+    own normal. **Hole at sketch points** on the toolbar adds one.
+  - Sizes come from presets: M2–M5 clearance, counterbore and countersink,
+    and heat-set insert bores. The preset name is kept as intent and dropped
+    when a size is typed by hand.
+  - `core/hole.ts` holds the geometry: placements, the half-section that the
+    kernel revolves about each hole's axis, the hand volume, what is wrong
+    with a set of sizes, and the callout text.
+  - The drawing's parameter table calls each hole out from the feature, as
+    "M4 countersink: Ø4.5 THRU ⌵ Ø8.6 × 90°".
+  - Holes, like fillets, keep the previous solid on screen until the exact
+    result arrives. `isSolidFeature` and `SOLID_KINDS` in `core/model.ts`
+    replace the lists of solid kinds that were written out at each use.
+  - Success notices now clear themselves, and sit below the model toolbar.
+    The face-sketch notice was covering the new button.
+  - Proof:
+    - `hole.test.ts` covers placements on each plane and face, sections,
+      volumes, presets and callouts.
+    - `planegcs-solve.test.ts` places a point by its distance from two edges
+      through the real PlaneGCS.
+    - `golden-parts.test.ts` drills simple, blind, counterbored and
+      countersunk holes into a plate, each to its hand volume.
+    - A1 now has two countersunk M4 holes per leg. Each is held a quarter of
+      the width in from the side by formula, and they follow the thickness
+      and width edits.
+    - `e2e/viewport-interactions.spec.ts` sketches a point on the plate's top
+      face, drills it, and changes its preset.
+  - Follow-ups:
+    - The callouts on the drawing views are still inferred from projected
+      circles. Only the parameter table reads the feature.
+    - There is no point-to-point dimension yet. A point is dimensioned to a
+      line or along one.
+    - Threads are not recorded at all yet. They are to be metadata only.
 - ⬜ **3.5 Patterns and mirror** (A1, A2, A3, A4). Linear, rectangular, and
   circular patterns of features, and mirror across a plane or centreline.
   Instances are generated in the operation chain, not copied into the document,
@@ -551,7 +584,7 @@ Status: ⬜ Planned
 - ⬜ Intersecting extrusion and independent multi-body management
 - ✅ Multiple closed regions and profiles with internal holes
 - ✅ Revolve about the sketch X or Y axis, with new-body, add, and cut operations
-- ⬜ Manufacturing-aware Hole feature: simple, counterbored, and countersunk forms; through-all and blind extents; placement from sketch points or face coordinates; standard diameters and thread metadata; exact boolean geometry; editable design intent; and data for generated drawing callouts
+- 🚧 Manufacturing-aware Hole feature: simple, counterbored, and countersunk forms, through-all and blind, placed from sketch points, sized from presets, built as exact booleans, and kept as editable intent. Thread metadata and view callouts read from the feature remain
 - ✅ Exact selectable-edge fillet and equal-distance chamfer are integrated, and an oversized radius or distance is reported with the largest one that works instead of failing the part
 - 🔬 Mitered corner fillets: fix OpenCascade 2-edge sharp fillet intersections without falling back to spherical blends or edge-by-edge mutations
 - ⬜ Shell and draft
@@ -741,7 +774,7 @@ These are implementation-shaping notes from a code review, not committed feature
 
 ### Roadmap/documentation cleanup
 
-- ✅ Reconcile milestone wording with the current implementation before the next planning pass. Kept current since: the model schema is v9, and provenance anchors now cover fillet and chamfer edges (swept by extrusions and revolves) and face-attached sketches. Stable topological naming still blocks safe dependency-aware incremental recomputation, but it no longer blocks every cache or performance improvement.
+- ✅ Reconcile milestone wording with the current implementation before the next planning pass. Kept current since: the model schema is v10, and provenance anchors now cover fillet and chamfer edges (swept by extrusions and revolves) and face-attached sketches. Stable topological naming still blocks safe dependency-aware incremental recomputation, but it no longer blocks every cache or performance improvement.
 
 ## Kernel behaviour notes
 

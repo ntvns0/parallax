@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react'
 import { Download, MousePointer2, Trash2 } from 'lucide-react'
 import { useDocumentStore } from '../core/document-store'
 import { collectDocumentDiagnostics, collectOpenProfileDiagnostics, collectRevolveAxisDiagnostics, findDiagnosticRepair, useFeatureDiagnosticsStore } from '../core/diagnostics'
-import type { Feature, FilletCornerStyle, FilletProfileShape, SketchFeature, Vec3 } from '../core/model'
+import type { Feature, FilletCornerStyle, FilletProfileShape, HoleFeature, HoleForm, HoleParameters, SketchFeature, Vec3 } from '../core/model'
+import { applyHolePreset, holeCallout, holePlacements, holeProblem, HOLE_PRESETS } from '../core/hole'
 import { revolveAxisCandidates } from '../core/revolve-axis'
 import { getProfileRegions, sketchBounds } from '../core/sketch'
 import { formatLength, formatLengthInput, parseLengthInput, unitLabel } from '../core/units'
@@ -312,6 +313,63 @@ function ExtrudeProperties({ feature }: { feature: Extract<Feature, { kind: 'ext
   )
 }
 
+const HOLE_FORMS: { form: HoleForm; label: string }[] = [
+  { form: 'simple', label: 'Simple' },
+  { form: 'counterbore', label: 'Counterbore' },
+  { form: 'countersink', label: 'Countersink' },
+]
+
+function HoleProperties({ feature }: { feature: HoleFeature }) {
+  const updateParameters = useDocumentStore((state) => state.updateParameters)
+  const features = useDocumentStore((state) => state.document.features)
+  const displayUnits = useDocumentStore((state) => state.document.displayUnits ?? 'mm')
+  const source = features.find((candidate) => candidate.id === feature.sketchId)
+  const count = holePlacements(feature, features).length
+  const { parameters } = feature
+  const problem = holeProblem(parameters)
+  // A size typed by hand is no longer the preset's size, so the preset goes.
+  const setSize = (patch: Partial<HoleParameters>) => updateParameters(feature.id, { ...patch, preset: undefined })
+  const field = (label: string, key: 'diameter' | 'depth' | 'headDiameter' | 'headDepth') => (
+    <NumberField label={label} value={parameters[key]} minAbs={0.001} binding={{ featureId: feature.id, key }} formula={feature.formulas?.[key]} onCommit={(value) => setSize({ [key]: value })} />
+  )
+  return (
+    <aside className="panel properties-panel">
+      <div className="panel-header"><span>HOLE</span><button aria-label="Close properties" onClick={() => useDocumentStore.getState().select(null)}>×</button></div>
+      <PropertyIdentity feature={feature} />
+      <div className="property-section">
+        <h3>Size</h3>
+        <label className="select-field"><span>Preset</span><select aria-label="Hole preset" value={parameters.preset ?? ''} onChange={(event) => {
+          if (event.target.value) useDocumentStore.getState().updateFeature(feature.id, { parameters: applyHolePreset(parameters, event.target.value) })
+        }}>
+          <option value="">Custom</option>
+          {HOLE_PRESETS.map((preset) => <option key={preset.name} value={preset.name}>{preset.name}</option>)}
+        </select></label>
+        <label className="select-field"><span>Form</span><select aria-label="Hole form" value={parameters.form} onChange={(event) => setSize({ form: event.target.value as HoleForm })}>
+          {HOLE_FORMS.map((option) => <option key={option.form} value={option.form}>{option.label}</option>)}
+        </select></label>
+        {field('Diameter', 'diameter')}
+        <label className="toggle-field"><span>Through all</span><input type="checkbox" checked={parameters.through} onChange={(event) => setSize({ through: event.target.checked })} /></label>
+        {!parameters.through && field('Depth', 'depth')}
+        {parameters.form !== 'simple' && field(parameters.form === 'counterbore' ? 'Counterbore Ø' : 'Countersink Ø', 'headDiameter')}
+        {parameters.form === 'counterbore' && field('Counterbore depth', 'headDepth')}
+        {parameters.form === 'countersink' && (
+          <NumberField label="Countersink angle" value={parameters.countersinkAngle} minAbs={0.001} binding={{ featureId: feature.id, key: 'countersinkAngle' }} formula={feature.formulas?.countersinkAngle} onCommit={(value) => setSize({ countersinkAngle: value })} />
+        )}
+      </div>
+      {problem && <div className="dependency-warning"><span>{problem} Nothing is drilled until it is fixed.</span></div>}
+      <div className="property-section feature-info">
+        <span>Callout</span><strong className="hole-callout">{holeCallout(parameters, (value) => formatLengthInput(value, displayUnits))}</strong>
+        <span>Placed at</span><strong>{source?.kind === 'sketch' ? `${count} point${count === 1 ? '' : 's'} in ${source.name}` : 'Missing sketch'}</strong>
+        <span>Kernel</span><strong>OpenCascade B-rep</strong>
+      </div>
+      {source?.kind === 'sketch' && !count && <div className="dependency-warning"><span>{source.name} has no points to drill. Add some with the Point tool.</span>
+        <button type="button" onClick={() => useDocumentStore.getState().beginSketch(source.id)}>Edit sketch</button>
+      </div>}
+      <button className="delete-feature" onClick={() => useDocumentStore.getState().removeSelected()}><Trash2 size={14} /> Delete hole</button>
+    </aside>
+  )
+}
+
 function FilletProperties({ feature, onReselectEdges }: { feature: Extract<Feature, { kind: 'fillet' }>; onReselectEdges: (feature: Extract<Feature, { kind: 'fillet' }>) => void }) {
   const updateParameters = useDocumentStore((state) => state.updateParameters)
   const warning = useFeatureDiagnosticsStore((state) => state.unresolved[feature.id])
@@ -474,5 +532,6 @@ export function PropertiesPanel({ feature, onReselectFilletEdges }: { feature: F
   if (feature.kind === 'extrude') return <ExtrudeProperties feature={feature} />
   if (feature.kind === 'revolve') return <RevolveProperties feature={feature} />
   if (feature.kind === 'fillet') return <FilletProperties feature={feature} onReselectEdges={onReselectFilletEdges} />
+  if (feature.kind === 'hole') return <HoleProperties feature={feature} />
   return <PrimitiveProperties feature={feature} />
 }

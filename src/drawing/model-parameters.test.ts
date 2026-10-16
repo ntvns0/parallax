@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { describeModelParameters } from './model-parameters'
-import { createExtrudeFeature, type DocumentParameter } from '../core/model'
+import { createExtrudeFeature, createFilletFeature, createHoleFeature, type DocumentParameter, type SketchFeature } from '../core/model'
+import { applyHolePreset, defaultHoleParameters } from '../core/hole'
 
 const format = (mm: number) => String(Math.round(mm * 100) / 100)
 
@@ -26,5 +27,22 @@ describe('describeModelParameters with named parameters', () => {
     expect(describeModelParameters([createExtrudeFeature('s1', 1, 24)], format)).toEqual([
       { label: 'Extrude 1 depth', value: '24' },
     ])
+  })
+})
+
+describe('describeModelParameters for holes and chamfers', () => {
+  it('calls a hole out by its preset and sizes, with how many there are', () => {
+    const points = {
+      id: 'pts', kind: 'sketch', name: 'Holes', plane: 'XY', parameters: { planeOffset: 0 }, constraints: [],
+      entities: [[0, 0], [10, 0]].map(([x, y], index) => ({ id: `p${index}`, type: 'point', position: [x, y], construction: false })),
+      position: [0, 0, 0], rotation: [0, 0, 0], visible: true,
+    } as SketchFeature
+    const hole = createHoleFeature('pts', 1, { ...applyHolePreset(defaultHoleParameters(), 'M4 countersink'), through: true })
+    expect(describeModelParameters([points, hole], format)).toEqual([{ label: 'Hole 1 ×2', value: 'M4 countersink: Ø4.5 THRU ⌵ Ø8.6 × 90°' }])
+  })
+
+  it('gives a chamfer its distance, not a radius', () => {
+    const chamfer = createFilletFeature([], 1, 1.5, { blend: 'chamfer' })
+    expect(describeModelParameters([chamfer], format)).toEqual([{ label: 'Chamfer 1 distance', value: '1.5 × 45°' }])
   })
 })
