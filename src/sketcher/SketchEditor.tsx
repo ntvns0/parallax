@@ -5,7 +5,7 @@ import {
   useState,
   type PointerEvent as ReactPointerEvent,
 } from 'react'
-import type { LineEntity, Vec2 } from '../core/model'
+import { isCurve, type LineEntity, type Vec2 } from '../core/model'
 import { useDocumentStore } from '../core/document-store'
 import {
   connectedSketchEntityIds,
@@ -16,7 +16,8 @@ import { parseLengthInput, sketchSnapIncrement } from '../core/units'
 import { useConstraintSolverStore } from './constraint-solver'
 import { ConstraintPanel } from './ConstraintPanel'
 import { sketchConstraintState } from './constraint-state'
-import { applySketchFillet, applySketchGeometry, applySketchTrim, toggleSketchConstruction } from './sketch-edits'
+import { applySketchFillet, applySketchGeometry, applySketchOffset, applySketchTrim, toggleSketchConstruction } from './sketch-edits'
+import { offsetSketchEntities } from './sketch-offset'
 import { reverseLineRuler, type LineRuler } from './entity-snap'
 import {
   beginAngleBreakaway,
@@ -51,6 +52,7 @@ import { useViewportStore } from '../viewport/viewport-store'
 import {
   DrawingPreview,
   FaceReferenceGeometry,
+  PendingGeometry,
   LineRulerOverlay,
   SketchEntityLayer,
   SketchGrid,
@@ -74,6 +76,8 @@ import {
  * level; it is divided by the view scale at the point of use.
  */
 const TRIM_PICK_TOLERANCE_PX = 8
+const DOUBLE_PRESS_MS = 400
+const DOUBLE_PRESS_SLOP_PX = 6
 
 /**
  * A centre-point arc that has its centre and radius but not yet its sweep.
@@ -101,6 +105,7 @@ export function SketchEditor({ sketchId }: { sketchId: string }) {
   const angleBreakawayRef = useRef<AngleBreakawayState | null>(null)
   const fineAngleControlRef = useRef(false)
   const spacePressedRef = useRef(false)
+  const lastEntityPressRef = useRef<{ entityId: string; time: number; x: number; y: number } | null>(null)
   const feature = useDocumentStore((state) => state.document.features.find((candidate) => candidate.id === sketchId))
   const sketch = feature?.kind === 'sketch' ? feature : undefined
   const displayUnits = useDocumentStore((state) => state.document.displayUnits ?? 'mm')
@@ -138,6 +143,7 @@ export function SketchEditor({ sketchId }: { sketchId: string }) {
   const [trimPreview, setTrimPreview] = useState<Vec2[] | null>(null)
   const [filletRadiusDraft, setFilletRadiusDraft] = useState('3')
   const [filletError, setFilletError] = useState<string | null>(null)
+  const [offsetDraft, setOffsetDraft] = useState('2')
 
   function resetLineGesture() {
     angleBreakawayRef.current = null
@@ -343,6 +349,20 @@ export function SketchEditor({ sketchId }: { sketchId: string }) {
         : [...current, entityId])
       return
     }
+    // A double click takes the whole connected chain, which is what an offset
+    // or a construction toggle usually wants. Pointer events leave `detail` at
+    // 0 in Chromium, so the previous press is remembered here instead.
+    const previous = lastEntityPressRef.current
+    lastEntityPressRef.current = { entityId, time: event.timeStamp, x: event.clientX, y: event.clientY }
+    if (
+      previous?.entityId === entityId
+      && event.timeStamp - previous.time < DOUBLE_PRESS_MS
+      && Math.hypot(event.clientX - previous.x, event.clientY - previous.y) <= DOUBLE_PRESS_SLOP_PX
+    ) {
+      lastEntityPressRef.current = null
+      setSelectedEntityIds([...connectedSketchEntityIds(activeSketch, entityId)])
+      return
+    }
     setSelectedEntityId(entityId)
     const origin = modelPointFromClient(event.clientX, event.clientY, false)
     drags.beginEntityDrag(event.pointerId, origin, activeSketch.entities, connectedSketchEntityIds(activeSketch, entityId))
@@ -373,6 +393,19 @@ export function SketchEditor({ sketchId }: { sketchId: string }) {
       return
     }
     void applySketchFillet(sketchId, selectedEntityIds[0], selectedEntityIds[1], radius).then((failure) => {
+      setFilletError(failure)
+      if (!failure) setSelectedEntityIds([])
+    })
+  }
+
+  /** Offset the selected curves by the drafted distance. Errors share the fillet's status line. */
+  function applyOffset() {
+    const distance = parseLengthInput(offsetDraft, displayUnits)
+    if (distance === null || distance === 0) {
+      setFilletError('Enter an offset distance other than zero; a negative one goes inward.')
+      return
+    }
+    void applySketchOffset(sketchId, selectedEntityIds, distance).then((failure) => {
       setFilletError(failure)
       if (!failure) setSelectedEntityIds([])
     })
@@ -526,6 +559,10 @@ export function SketchEditor({ sketchId }: { sketchId: string }) {
     pendingTangentArc,
   })
   const readout = sketchReadout(preview, displayUnits)
+  const canOffset = tool === 'select' && activeSketch.entities.some((entity) => selectedEntityIds.includes(entity.id) && isCurve(entity))
+  const offsetDistance = canOffset ? parseLengthInput(offsetDraft, displayUnits) : null
+  const offsetResult = offsetDistance ? offsetSketchEntities(displayEntities, selectedEntityIds, offsetDistance) : null
+  const offsetPreview = offsetResult?.ok ? offsetResult.entities : null
   const constructionIds = new Set(activeSketch.entities.filter((entity) => entity.construction).map((entity) => entity.id))
   const entityClassName = (entityId: string) => [
     constraintState,
@@ -561,6 +598,7 @@ export function SketchEditor({ sketchId }: { sketchId: string }) {
           onEndpointPointerDown={beginEndpointDrag}
         />
         <DrawingPreview state={preview} screen={screen} />
+        {offsetPreview && <PendingGeometry entities={offsetPreview} screen={screen} />}
       </svg>
 
       <SketchBanner sketch={activeSketch} units={displayUnits} />
@@ -595,6 +633,11 @@ export function SketchEditor({ sketchId }: { sketchId: string }) {
           draft: filletRadiusDraft,
           onDraft: (value) => { setFilletRadiusDraft(value); setFilletError(null) },
           onApply: applyCornerFillet,
+        } : null}
+        offset={canOffset ? {
+          draft: offsetDraft,
+          onDraft: (value) => { setOffsetDraft(value); setFilletError(null) },
+          onApply: applyOffset,
         } : null}
         onConstruction={selectedEntityIds.length ? () => toggleSketchConstruction(sketchId, selectedEntityIds) : null}
         onUndo={() => { useDocumentStore.getState().undo(); setStart(null) }}

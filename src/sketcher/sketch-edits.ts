@@ -6,11 +6,12 @@ import {
   scaleSketchEntities,
   translateSketchEntities,
 } from '../core/sketch'
-import { solveSketchConstraints } from './constraint-solver'
+import { solveSketchConstraints, useConstraintSolverStore } from './constraint-solver'
 import { resolveParameterTable, withoutConstraintFormula } from '../core/parameters'
 import { tryEvaluateExpression } from '../core/expression'
 import { trimSketchEntity } from './trim'
 import { filletSketchCorner } from './sketch-fillet'
+import { offsetSketchEntities, withoutRedundantConstraints } from './sketch-offset'
 import { formatLengthInput } from '../core/units'
 import { sketchesAwaitingSolve } from '../core/driven-sketches'
 
@@ -254,6 +255,36 @@ export async function applySketchFillet(sketchId: string, firstId: string, secon
       : `${result.reason} The largest that fits is ${formatLengthInput(result.maximumRadius, useDocumentStore.getState().document.displayUnits ?? 'mm')}.`
   }
   await solveAndCommit(sketch, result.entities, result.constraints)
+  return null
+}
+
+/**
+ * Copy the selected chain or circles a distance to one side, tied to the
+ * originals. Returns why not, or null.
+ *
+ * Some of the copy's constraints are implied by its smooth joins, and PlaneGCS
+ * reports those as redundant. They are found by solving and dropped before
+ * the result is committed, so an offset never leaves the sketch in trouble.
+ */
+export async function applySketchOffset(sketchId: string, entityIds: string[], offset: number) {
+  const sketch = readSketch(sketchId)
+  if (!sketch) return 'This sketch is no longer available.'
+  const result = offsetSketchEntities(sketch.entities, entityIds, offset)
+  if (!result.ok) return result.reason
+  const entities = [...sketch.entities, ...result.entities]
+  const anchor = resolveSketchAnchor(entities, sketch.anchor)
+  let added = result.constraints
+  for (let round = 0; round < 3; round += 1) {
+    try {
+      await solveSketchConstraints(entities, [...sketch.constraints, ...added], anchor)
+    } catch {
+      break
+    }
+    const kept = withoutRedundantConstraints(added, useConstraintSolverStore.getState().redundant)
+    if (kept.length === added.length) break
+    added = kept
+  }
+  await solveAndCommit(sketch, entities, [...sketch.constraints, ...added])
   return null
 }
 

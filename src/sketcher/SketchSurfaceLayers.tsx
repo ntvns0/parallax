@@ -174,6 +174,19 @@ export function SketchEntityLayer({
   </>
 }
 
+/** Geometry an action would add, such as an offset, drawn dashed before it is applied. */
+export function PendingGeometry({ entities, screen }: { entities: SketchEntity[]; screen: ScreenMap }) {
+  const { toX, toY, scale } = screen
+  return <g className="pending-geometry">
+    {entities.map((entity) => {
+      if (entity.type === 'line') return <line key={entity.id} x1={toX(entity.start[0])} y1={toY(entity.start[1])} x2={toX(entity.end[0])} y2={toY(entity.end[1])} className="sketch-preview" />
+      if (entity.type === 'arc') return <path key={entity.id} d={arcPath(entity, screen)} className="sketch-preview" />
+      if (entity.type === 'circle') return <circle key={entity.id} cx={toX(entity.center[0])} cy={toY(entity.center[1])} r={entity.radius * scale} className="sketch-preview" />
+      return null
+    })}
+  </g>
+}
+
 /** What the active tool would add, drawn before it is added. */
 export function DrawingPreview({ state, screen }: { state: DrawingPreviewState; screen: ScreenMap }) {
   const { toX, toY } = screen

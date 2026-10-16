@@ -217,12 +217,14 @@ const TOOL_ICONS: Record<EditorTool, ReactNode> = {
   trim: <Scissors />,
 }
 
-export function SketchToolbar({ tool, angleSnap, onAngleSnap, fillet, onConstruction, onUndo, onDelete }: {
+export function SketchToolbar({ tool, angleSnap, onAngleSnap, fillet, offset, onConstruction, onUndo, onDelete }: {
   tool: EditorTool
   angleSnap: AngleSnap
   onAngleSnap: (value: AngleSnap) => void
   /** The corner fillet control, shown when two entities are selected. */
   fillet: { draft: string; onDraft: (value: string) => void; onApply: () => void } | null
+  /** The offset control, shown when curves are selected. A negative distance goes inward. */
+  offset: { draft: string; onDraft: (value: string) => void; onApply: () => void } | null
   /** Toggle the selection between construction and profile geometry, when something is selected. */
   onConstruction: (() => void) | null
   onUndo: () => void
@@ -255,6 +257,18 @@ export function SketchToolbar({ tool, angleSnap, onAngleSnap, fillet, onConstruc
           onKeyDown={(event) => { if (event.key === 'Enter') fillet.onApply() }}
         />
         <button onClick={fillet.onApply}>Apply</button>
+      </label>
+    )}
+    {offset && (
+      <label className="sketch-fillet-control" title="Copy the selected chain or circles this far outward; a negative distance goes inward">
+        <span>OFFSET</span>
+        <input
+          aria-label="Sketch offset distance"
+          value={offset.draft}
+          onChange={(event) => offset.onDraft(event.target.value)}
+          onKeyDown={(event) => { if (event.key === 'Enter') offset.onApply() }}
+        />
+        <button onClick={offset.onApply}>Apply</button>
       </label>
     )}
     {onConstruction && <button title="Construction geometry is solved and snapped to, but never part of a profile" onClick={onConstruction}><SquareDashed /> Construction <kbd>Q</kbd></button>}

@@ -90,7 +90,7 @@ Every part is checked three ways:
 | # | Part | What it exercises | Edit test | Missing today |
 | --- | --- | --- | --- | --- |
 | A1 | **Screw-mount L-bracket.** 40 mm wide, legs of 50 and 30 mm, 4 mm thick, R4 inside corner, 1 mm chamfer on outside edges, two countersunk M4 holes per leg | Face sketches, extrude, fillet, chamfer, Hole, linear pattern | Thickness 4 → 6, hole count 2 → 3 per leg | ✅ Passes all three checks. Its hole sketches sit on base planes, held at the leg faces by the thickness formula, not attached to the faces |
-| A2 | **Desk cable clip.** Screw-down base, a C-shaped Ø10 cable channel with 2 mm walls and a 7 mm snap opening, symmetric about a centreline, 15 mm deep, one countersunk hole in the base | Arcs, trim, sketch fillet, construction centreline, symmetric constraint, offset, mirror | Channel Ø10 → Ø14, wall 2 → 2.5 | Sketch offset, mirror, Hole |
+| A2 | **Desk cable clip.** Screw-down base, a C-shaped Ø10 cable channel with 2 mm walls and a 7 mm snap opening, symmetric about a centreline, 15 mm deep, one countersunk hole in the base | Arcs, trim, sketch fillet, construction centreline, symmetric constraint, offset, mirror | Channel Ø10 → Ø14, wall 2 → 2.5 | Not built yet. Its tools exist, with the symmetric constraint standing in for a sketch mirror |
 | A3 | **Electronics enclosure with lid.** 80 × 50 × 30 mm box, shelled to 2 mm with an open top, R3 vertical edges, four Ø6 standoffs with Ø4.2 heat-set insert holes in a rectangular pattern, a USB-C cutout in a side wall, and a separate lid body with a lip set by a `clearance = 0.2 mm` parameter and a pattern of vent slots | Shell, multiple bodies, rectangular pattern, side-face sketches, Hole, per-body export | Box 80 × 50 → 100 × 60, clearance 0.2 → 0.3 | Shell, multiple bodies, rectangular pattern, Hole, per-body export |
 | A4 | **Parametric knob.** A revolved body, a 6 mm D-shaft bore with the flat at 4.5 mm plus clearance, 24 grip grooves in a circular pattern, and a chamfered top edge | Revolve, construction axis, circular pattern, chamfer, formula-driven dimensions | Groove count 24 → 18, shaft 6 → 5 | ✅ Passes all three checks |
 
@@ -462,8 +462,37 @@ it needs one.
     - `e2e/viewport-interactions.spec.ts` patterns its drilled hole into a
       row of three.
     - A1 and A4 now pass all three acceptance checks.
-- ⬜ **3.6 Sketch offset** (A2). Built on the splitting maths `trim.ts` already
-  provides, as the earlier roadmap noted.
+- ✅ **3.6 Sketch offset** (A2). Select lines and arcs, or a circle, in the
+  sketcher, type a distance in OFFSET, and apply. Double-clicking an entity
+  selects its whole connected chain.
+  - `sketcher/sketch-offset.ts` builds the copy:
+    - It walks the selection as chains. A closed chain grows outward for a
+      positive distance and shrinks for a negative one. An open chain moves to
+      its left.
+    - Each line moves sideways and each arc changes radius. Corners are
+      re-met where the moved pieces' extended lines and circles cross, which
+      is the `extendedIntersections` maths `trim.ts` now exports.
+    - It refuses branching chains, distances that turn a piece inside out, and
+      a selection with nothing to offset.
+  - The copy keeps its distance as intent. Each line is parallel to its
+    original at a point-to-line distance, each arc and circle is concentric
+    with a radius, and the corners are joined. Editing the original moves the
+    copy.
+  - Before committing, the constraints PlaneGCS reports redundant are dropped,
+    apart from the corner joins. At a smooth join the tangency is already
+    implied; see "Kernel behaviour notes".
+  - The copy is previewed dashed while the distance is typed.
+  - Proof:
+    - `sketch-offset.test.ts` uses the real PlaneGCS. It grows and shrinks a
+      rectangle, offsets a slot with arcs, an open chain and a circle, checks
+      the refusals, and widens the original to show the copy following.
+    - `e2e/sketcher.spec.ts` double-clicks a rectangle, offsets it by 2 mm,
+      and gets a frame that reads as one region with one hole.
+  - Follow-ups:
+    - The distance is unsigned in PlaneGCS, so a large edit to the original
+      can flip a line copy to the other side. Small edits hold.
+    - A sketch mirror across a centreline still does not exist. A2 uses the
+      symmetric constraint instead.
 - ⬜ **3.7 Shell** (A3). Pick the faces to remove, set the wall thickness, and
   report the thickness that would work when OpenCascade refuses — the same
   repair pattern as an oversized fillet.
@@ -581,7 +610,7 @@ The goal is to make sketches predictable, inspectable, and genuinely parametric 
 - ✅ Arc tools: centre-point, three-point, and tangent arcs are integrated end to end, from the sketcher through PlaneGCS to exact B-rep profiles that mix straight and curved edges
 - ⬜ Construction geometry and centerlines
 - ⬜ Project external edges into a sketch
-- 🚧 Sketch fillet rounds a line-to-line corner: the arc is tangent to both lines, both are cut back to the tangent points, and the result carries tangency, a radius dimension and coincidence at each end, so it means "rounded corner" to the solver rather than "an arc near a gap". Fillets involving arcs or circles need a different tangent construction and are reported as unsupported instead of approximated. Offset remains, and the trim work above supplies the splitting maths it needs
+- 🚧 Sketch fillet rounds a line-to-line corner: the arc is tangent to both lines, both are cut back to the tangent points, and the result carries tangency, a radius dimension and coincidence at each end, so it means "rounded corner" to the solver rather than "an arc near a gap". Fillets involving arcs or circles need a different tangent construction and are reported as unsupported instead of approximated. Offset of lines, arcs and circles is in, keeping its distance as constraints (3.6)
 - 🚧 Multi-selection: shift-click selects a second entity so a relationship can be applied to a pair; box selection remains
 
 ### Constraints and dimensions
@@ -850,6 +879,14 @@ Facts about OpenCascade through Replicad that cost real effort to establish. Rec
   `sketcher/planegcs-solve.ts` adds the rule. Also: `wrapper.solve()` returns
   a status, and a failed solve still applies its last attempt, so check the
   status before trusting the geometry.
+- **PlaneGCS calls a tangency at a shared end point redundant.** Two curves
+  joined by a coincident constraint and also made tangent there are reported
+  as redundant, though each constraint carries meaning. The same happens to an
+  offset copy's distance once parallels and corner joins already fix it.
+  `sketcher/sketch-offset.ts` keeps the joins and drops whichever other added
+  constraint the solver reports, repeating until none is reported. Also:
+  `p2l_distance` is unsigned, so a line held at a distance can settle on
+  either side.
 - **Kernel-level tests run under jsdom** (`kernel/arc-profile.test.ts`, `fillet-apply.test.ts`, `fillet-limit.test.ts`). Load the wasm with `readFileSync` and a path resolved from `process.cwd()`: `import.meta.url` is not a file URL in that environment, and the shared test setup assumes a DOM, so the `node` environment is not available.
 
 ## Major technical risks

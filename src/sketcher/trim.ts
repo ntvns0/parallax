@@ -113,14 +113,21 @@ function intersectCircles(a: CircleLike, b: CircleLike): Vec2[] {
  * the infinite line and the full circle are solving devices, not the geometry.
  */
 export function intersectSketchEntities(a: CurveEntity, b: CurveEntity): Vec2[] {
+  return extendedIntersections(a, b).filter((point) => liesOnEntity(a, point) && liesOnEntity(b, point))
+}
+
+/**
+ * Where two entities would cross if each ran on for ever: a line as its whole
+ * line, an arc as its whole circle. What offset needs to close a corner.
+ */
+export function extendedIntersections(a: CurveEntity, b: CurveEntity): Vec2[] {
   const circleA = circleOf(a)
   const circleB = circleOf(b)
-  let candidates: Vec2[] = []
-  if (a.type === 'line' && b.type === 'line') candidates = intersectLines(a, b)
-  else if (a.type === 'line' && circleB) candidates = intersectLineCircle(a, circleB)
-  else if (b.type === 'line' && circleA) candidates = intersectLineCircle(b, circleA)
-  else if (circleA && circleB) candidates = intersectCircles(circleA, circleB)
-  return candidates.filter((point) => liesOnEntity(a, point) && liesOnEntity(b, point))
+  if (a.type === 'line' && b.type === 'line') return intersectLines(a, b)
+  if (a.type === 'line' && circleB) return intersectLineCircle(a, circleB)
+  if (b.type === 'line' && circleA) return intersectLineCircle(b, circleA)
+  if (circleA && circleB) return intersectCircles(circleA, circleB)
+  return []
 }
 
 /** Where every other entity crosses this one, as parameters along it. */

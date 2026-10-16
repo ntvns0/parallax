@@ -141,3 +141,25 @@ test('dimensions from a circle’s centre to a line, and the dimension drives', 
     return line?.type === 'line' ? round(line.start[0]) : null
   }).toBe(4)
 })
+
+test('offsets a rectangle picked as a chain into a frame', async ({ page }) => {
+  await page.goto('/?test=1')
+  await sketchRectangle(page, [-10, -5], [10, 5])
+
+  // A double click on one side takes the whole connected rectangle.
+  await page.keyboard.press('v')
+  const side = await at(page, 0, -5)
+  await page.mouse.dblclick(side.x, side.y)
+  const offset = page.getByLabel('Sketch offset distance')
+  await expect(offset).toBeVisible()
+  await offset.fill('2')
+  await expect(page.locator('.pending-geometry line')).toHaveCount(4)
+  await offset.press('Enter')
+
+  await expect.poll(async () => (await sketchEntities(page))?.entities.length).toBe(8)
+  const lines = (await sketchEntities(page))!.entities.filter((entity) => entity.type === 'line')
+  const xs = lines.flatMap((entity) => entity.type === 'line' ? [entity.start[0], entity.end[0]] : []).map(round)
+  expect(Math.min(...xs)).toBe(-12)
+  expect(Math.max(...xs)).toBe(12)
+  await expect(page.locator('.profile-status')).toContainText('1 region ready · 1 hole')
+})
