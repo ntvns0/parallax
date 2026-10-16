@@ -1,5 +1,5 @@
 import { resolveFaceOffset } from './face-anchor'
-import type { Feature } from './model'
+import { createId, type Feature } from './model'
 import { revolveAxisInSketch } from './revolve-axis'
 import { getProfileRegions } from './sketch'
 import { create } from 'zustand'
@@ -167,7 +167,7 @@ export function readDiagnostics(): DiagnosticEntry[] {
 
 export function logDiagnostic(level: DiagnosticLevel, area: string, message: string, context?: unknown) {
   const entry: DiagnosticEntry = {
-    id: crypto.randomUUID(),
+    id: createId(),
     timestamp: new Date().toISOString(),
     level,
     area,

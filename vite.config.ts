@@ -26,5 +26,7 @@ export default defineConfig({
   server: {
     host: true,
     port: 5173,
+    // This machine's Tailscale name, so the dev server opens from other devices.
+    allowedHosts: ['fedora'],
   },
 })

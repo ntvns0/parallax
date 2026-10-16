@@ -1,4 +1,4 @@
-import { cloneDocument, type CadDocument } from './model'
+import { cloneDocument, createId, type CadDocument } from './model'
 import { areDocumentsStructurallyEqual } from './geometry-signature'
 import * as storage from './project-storage'
 import type { ProjectSummary, RecoverySnapshot } from './project-storage'
@@ -26,7 +26,7 @@ export class ProjectPersistenceService {
     if (snapshots[0] && areDocumentsStructurallyEqual(snapshots[0].document, previous)) return
 
     const snapshot: RecoverySnapshot = {
-      id: crypto.randomUUID(),
+      id: createId(),
       savedAt: new Date().toISOString(),
       document: cloneDocument(previous),
     }

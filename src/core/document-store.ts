@@ -447,7 +447,7 @@ export const useDocumentStore = create<EditorState>((set, get) => ({
       const savedProjects = await persistenceService.persistDocument(state.document, state.projects)
       const existing = savedProjects.some((project) => project.id === document.id)
       const imported = normalizeDocument(cloneDocument(document))
-      if (existing) imported.id = crypto.randomUUID()
+      if (existing) imported.id = createId()
       imported.updatedAt = new Date().toISOString()
       const projects = await persistenceService.persistDocument(imported, savedProjects, false)
       set({

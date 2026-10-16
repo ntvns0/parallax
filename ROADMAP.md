@@ -960,6 +960,11 @@ Facts about OpenCascade through Replicad that cost real effort to establish. Rec
   afterwards has to be `clone()`d first; a clone shares the geometry, so it is
   cheap. Patterns clone each tool before moving it, and `evaluateBodies` hands
   `makeCompound` clones of each body, for the same reason.
+- **`crypto.randomUUID` needs a secure context.** It is missing over plain
+  http from anything but localhost, so the app opened from a phone or tablet
+  on the LAN or Tailscale threw on its first id and showed a blank page.
+  `createId` in `core/model.ts` falls back to `getRandomValues`, which works
+  anywhere, and every id goes through it.
 - **Kernel-level tests run under jsdom** (`kernel/arc-profile.test.ts`, `fillet-apply.test.ts`, `fillet-limit.test.ts`). Load the wasm with `readFileSync` and a path resolved from `process.cwd()`: `import.meta.url` is not a file URL in that environment, and the shared test setup assumes a DOM, so the `node` environment is not available.
 
 ## Major technical risks
