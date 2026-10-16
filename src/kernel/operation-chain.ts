@@ -2,10 +2,11 @@ import { currentEdgeReference } from '../core/edge-anchor'
 import { currentPlaneOffset } from '../core/face-anchor'
 import { planeNormalDistance } from '../core/extrude-direction'
 import { holePlacements, holeProblem } from '../core/hole'
+import { patternSeeds, patternTransforms } from '../core/pattern'
 import type { Feature, SolidFeature } from '../core/model'
 import { revolveAxis } from '../core/revolve-axis'
 import { getProfileRegions } from '../core/sketch'
-import type { KernelOperation } from './kernel-types'
+import type { KernelOperation, KernelPatternSeed } from './kernel-types'
 
 /**
  * Replay every extrusion up to and including `feature` as a flat list of kernel
@@ -22,82 +23,95 @@ import type { KernelOperation } from './kernel-types'
 export function buildOperationChain(feature: SolidFeature, features: Feature[]): KernelOperation[] {
   const featureIndex = features.findIndex((candidate) => candidate.id === feature.id)
   const relevant = features.slice(0, featureIndex >= 0 ? featureIndex + 1 : features.length)
+  return relevant.flatMap((candidate) => {
+    const operation = operationFor(candidate, features)
+    return operation ? [operation] : []
+  })
+}
 
-  const operations: KernelOperation[] = []
-  for (const candidate of relevant) {
-    if (candidate.kind === 'fillet') {
-      operations.push({
-        type: 'fillet' as const,
-        featureId: candidate.id,
-        featureName: candidate.name,
-        radius: candidate.parameters.radius,
-        blend: candidate.parameters.blend ?? 'round',
-        ...(candidate.parameters.radius2 !== undefined ? { radius2: candidate.parameters.radius2 } : {}),
-        cornerStyle: candidate.parameters.cornerStyle ?? 'spherical',
-        filletShape: candidate.parameters.filletShape ?? 'rational',
-        edges: candidate.edges.map((edge) => currentEdgeReference(edge, features)),
-      })
-      continue
-    }
-    if (candidate.kind === 'hole') {
-      // A hole with no points drills nothing, and is left out so it cannot
-      // change the cache key of the chain it sits in.
-      const placements = holePlacements(candidate, features)
-      if (!placements.length) continue
-      // The preset is intent for callouts, not geometry, so it stays out of the key.
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
-      const { preset, ...parameters } = candidate.parameters
-      // Sizes that cannot make a hole drill nothing; the property panel says why.
-      if (holeProblem(candidate.parameters)) continue
-      operations.push({ type: 'hole' as const, featureId: candidate.id, featureName: candidate.name, placements, parameters })
-      continue
-    }
-    if (candidate.kind === 'extrude') {
-      const sketch = features.find((source) => source.id === candidate.sketchId)
-      if (sketch?.kind !== 'sketch') continue
-      const regions = getProfileRegions(sketch)
-      if (!regions.length) continue
-      const distance = planeNormalDistance(candidate.parameters.distance, sketch.parameters.faceNormalSign)
-
-      operations.push({
-        type: 'extrude' as const,
-        featureId: candidate.id,
-        featureName: candidate.name,
-        sketchId: sketch.id,
-        regions,
-        plane: sketch.plane,
-        planeOffset: currentPlaneOffset(sketch, features),
-        distance,
-        symmetric: candidate.parameters.symmetric,
-        operation: candidate.operation,
-        edgeRadius: candidate.parameters.edgeRadius ?? 0,
-      })
-    } else if (candidate.kind === 'revolve') {
-      const sketch = features.find((source) => source.id === candidate.sketchId)
-      if (sketch?.kind !== 'sketch') continue
-      const regions = getProfileRegions(sketch)
-      if (!regions.length) continue
-      const planeOffset = currentPlaneOffset(sketch, features)
-      // A revolve whose axis line was deleted cannot be built; diagnostics say so.
-      const axis = revolveAxis(candidate, sketch, planeOffset)
-      if (!axis) continue
-
-      operations.push({
-        type: 'revolve' as const,
-        featureId: candidate.id,
-        featureName: candidate.name,
-        sketchId: sketch.id,
-        regions,
-        plane: sketch.plane,
-        planeOffset,
-        angle: candidate.parameters.angle,
-        axisOrigin: axis.origin,
-        axisDirection: axis.direction,
-        operation: candidate.operation,
-      })
+/** The kernel operation for one feature, or null when it contributes nothing. */
+function operationFor(candidate: Feature, features: Feature[]): KernelOperation | null {
+  if (candidate.kind === 'fillet') {
+    return {
+      type: 'fillet' as const,
+      featureId: candidate.id,
+      featureName: candidate.name,
+      radius: candidate.parameters.radius,
+      blend: candidate.parameters.blend ?? 'round',
+      ...(candidate.parameters.radius2 !== undefined ? { radius2: candidate.parameters.radius2 } : {}),
+      cornerStyle: candidate.parameters.cornerStyle ?? 'spherical',
+      filletShape: candidate.parameters.filletShape ?? 'rational',
+      edges: candidate.edges.map((edge) => currentEdgeReference(edge, features)),
     }
   }
-  return operations
+  if (candidate.kind === 'pattern') {
+    // A pattern with nothing to copy, or numbers that make no copies, does
+    // nothing, and is left out so it cannot change the cache key either.
+    const transforms = patternTransforms(candidate.parameters)
+    const seeds = patternSeeds(candidate, features)
+      .map((seed) => operationFor(seed, features))
+      .filter((seed): seed is KernelPatternSeed => seed !== null && seed.type !== 'fillet' && seed.type !== 'pattern')
+    if (!transforms.length || !seeds.length) return null
+    return { type: 'pattern' as const, featureId: candidate.id, featureName: candidate.name, seeds, transforms }
+  }
+  if (candidate.kind === 'hole') {
+    // A hole with no points drills nothing, and is left out so it cannot
+    // change the cache key of the chain it sits in.
+    const placements = holePlacements(candidate, features)
+    if (!placements.length) return null
+    // Sizes that cannot make a hole drill nothing; the property panel says why.
+    if (holeProblem(candidate.parameters)) return null
+    // The preset is intent for callouts, not geometry, so it stays out of the key.
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { preset, ...parameters } = candidate.parameters
+    return { type: 'hole' as const, featureId: candidate.id, featureName: candidate.name, placements, parameters }
+  }
+  if (candidate.kind === 'extrude') {
+    const sketch = features.find((source) => source.id === candidate.sketchId)
+    if (sketch?.kind !== 'sketch') return null
+    const regions = getProfileRegions(sketch)
+    if (!regions.length) return null
+    const distance = planeNormalDistance(candidate.parameters.distance, sketch.parameters.faceNormalSign)
+
+    return {
+      type: 'extrude' as const,
+      featureId: candidate.id,
+      featureName: candidate.name,
+      sketchId: sketch.id,
+      regions,
+      plane: sketch.plane,
+      planeOffset: currentPlaneOffset(sketch, features),
+      distance,
+      symmetric: candidate.parameters.symmetric,
+      operation: candidate.operation,
+      edgeRadius: candidate.parameters.edgeRadius ?? 0,
+    }
+  }
+  if (candidate.kind === 'revolve') {
+    const sketch = features.find((source) => source.id === candidate.sketchId)
+    if (sketch?.kind !== 'sketch') return null
+    const regions = getProfileRegions(sketch)
+    if (!regions.length) return null
+    const planeOffset = currentPlaneOffset(sketch, features)
+    // A revolve whose axis line was deleted cannot be built; diagnostics say so.
+    const axis = revolveAxis(candidate, sketch, planeOffset)
+    if (!axis) return null
+
+    return {
+      type: 'revolve' as const,
+      featureId: candidate.id,
+      featureName: candidate.name,
+      sketchId: sketch.id,
+      regions,
+      plane: sketch.plane,
+      planeOffset,
+      angle: candidate.parameters.angle,
+      axisOrigin: axis.origin,
+      axisDirection: axis.direction,
+      operation: candidate.operation,
+    }
+  }
+  return null
 }
 
 /**
@@ -140,6 +154,7 @@ export function describeOperationChain(operations: KernelOperation[]) {
           regions: operation.regions.map((region) => ({ outer: region.outer.type, holes: region.holes.length })),
         }
       : operation.type === 'hole' ? { form: operation.parameters.form, holes: operation.placements.length }
+      : operation.type === 'pattern' ? { seeds: operation.seeds.map((seed) => seed.featureId), copies: operation.transforms.length }
       : { radius: operation.radius, selectedEdges: operation.edges.length }),
   }))
 }

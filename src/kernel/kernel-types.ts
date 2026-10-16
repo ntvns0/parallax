@@ -1,5 +1,6 @@
 import type { ProfileRegion } from '../core/sketch'
 import type { HolePlacement } from '../core/hole'
+import type { PatternTransform } from '../core/pattern'
 import type { FilletEdgeReference, HoleParameters, SketchPlane, Vec3 } from '../core/model'
 import type { DrawingViewId, OrthographicViewId, ProjectedView } from '../drawing/drawing-types'
 import type { FeatureDiagnostic } from '../core/diagnostics'
@@ -56,7 +57,19 @@ export type KernelHoleOperation = {
   parameters: HoleParameters
 }
 
-export type KernelOperation = KernelExtrudeOperation | KernelFilletOperation | KernelRevolveOperation | KernelHoleOperation
+/** What a pattern can copy: anything built from a tool and a boolean. */
+export type KernelPatternSeed = KernelExtrudeOperation | KernelRevolveOperation | KernelHoleOperation
+
+export type KernelPatternOperation = {
+  type: 'pattern'
+  featureId: string
+  featureName: string
+  /** The copied features' own operations, rebuilt here and moved by each transform. */
+  seeds: KernelPatternSeed[]
+  transforms: PatternTransform[]
+}
+
+export type KernelOperation = KernelExtrudeOperation | KernelFilletOperation | KernelRevolveOperation | KernelHoleOperation | KernelPatternOperation
 
 /** What the caller wants back once the feature chain has been evaluated. */
 export type KernelOutput = 'mesh' | KernelExportFormat | 'projection'

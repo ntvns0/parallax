@@ -1,6 +1,6 @@
 # Parallax Roadmap
 
-Last updated: October 15, 2026 (Phase 3 under way: construction geometry, point constraints, chamfer, sketch points and holes are done)
+Last updated: October 15, 2026 (Phase 3 under way: construction geometry, point constraints, chamfer, holes and patterns are done; A1 and A4 pass)
 
 This document tracks what Parallax can do, what the project is actively building, and the milestones required to become a professional browser-native parametric CAD system.
 
@@ -89,10 +89,10 @@ Every part is checked three ways:
 
 | # | Part | What it exercises | Edit test | Missing today |
 | --- | --- | --- | --- | --- |
-| A1 | **Screw-mount L-bracket.** 40 mm wide, legs of 50 and 30 mm, 4 mm thick, R4 inside corner, 1 mm chamfer on outside edges, two countersunk M4 holes per leg | Face sketches, extrude, fillet, chamfer, Hole, linear pattern | Thickness 4 → 6, hole count 2 → 3 per leg | Linear pattern |
+| A1 | **Screw-mount L-bracket.** 40 mm wide, legs of 50 and 30 mm, 4 mm thick, R4 inside corner, 1 mm chamfer on outside edges, two countersunk M4 holes per leg | Face sketches, extrude, fillet, chamfer, Hole, linear pattern | Thickness 4 → 6, hole count 2 → 3 per leg | ✅ Passes all three checks. Its hole sketches sit on base planes, held at the leg faces by the thickness formula, not attached to the faces |
 | A2 | **Desk cable clip.** Screw-down base, a C-shaped Ø10 cable channel with 2 mm walls and a 7 mm snap opening, symmetric about a centreline, 15 mm deep, one countersunk hole in the base | Arcs, trim, sketch fillet, construction centreline, symmetric constraint, offset, mirror | Channel Ø10 → Ø14, wall 2 → 2.5 | Sketch offset, mirror, Hole |
 | A3 | **Electronics enclosure with lid.** 80 × 50 × 30 mm box, shelled to 2 mm with an open top, R3 vertical edges, four Ø6 standoffs with Ø4.2 heat-set insert holes in a rectangular pattern, a USB-C cutout in a side wall, and a separate lid body with a lip set by a `clearance = 0.2 mm` parameter and a pattern of vent slots | Shell, multiple bodies, rectangular pattern, side-face sketches, Hole, per-body export | Box 80 × 50 → 100 × 60, clearance 0.2 → 0.3 | Shell, multiple bodies, rectangular pattern, Hole, per-body export |
-| A4 | **Parametric knob.** A revolved body, a 6 mm D-shaft bore with the flat at 4.5 mm plus clearance, 24 grip grooves in a circular pattern, and a chamfered top edge | Revolve, construction axis, circular pattern, chamfer, formula-driven dimensions | Groove count 24 → 18, shaft 6 → 5 | Circular pattern |
+| A4 | **Parametric knob.** A revolved body, a 6 mm D-shaft bore with the flat at 4.5 mm plus clearance, 24 grip grooves in a circular pattern, and a chamfered top edge | Revolve, construction axis, circular pattern, chamfer, formula-driven dimensions | Groove count 24 → 18, shaft 6 → 5 | ✅ Passes all three checks |
 
 Three of these are the same parts as the template IDs started on the
 `codex/cad-print-templates` branch (`l-bracket`, `cable-guide`,
@@ -428,10 +428,40 @@ it needs one.
     - There is no point-to-point dimension yet. A point is dimensioned to a
       line or along one.
     - Threads are not recorded at all yet. They are to be metadata only.
-- ⬜ **3.5 Patterns and mirror** (A1, A2, A3, A4). Linear, rectangular, and
-  circular patterns of features, and mirror across a plane or centreline.
-  Instances are generated in the operation chain, not copied into the document,
-  so the count stays a single editable parameter.
+- ✅ **3.5 Patterns and mirror** (A1, A2, A3, A4). Done for features; a
+  sketch-level mirror across a centreline is not, and A2 can use the
+  symmetric constraint instead.
+  - A Pattern feature copies earlier extrusions, revolves and holes:
+    - in a row, or a grid with a second direction;
+    - round an axis, evenly over a full turn or end to end over a span;
+    - or as a mirror image across a plane.
+    Directions and axes are the world axes.
+  - The copies are made in the operation chain at the pattern's place in the
+    history. Each original's tool is rebuilt, moved by each transform, fused,
+    and cut or added as the original was. The counts, spacings and span are
+    single parameters that formulas can drive.
+  - `core/pattern.ts` holds the transforms, the rules and the description, and
+    `transformPoint` checks them against the kernel's moves.
+    `buildOperationChain` now builds each feature's operation in one place,
+    `operationFor`, which a pattern reuses for its originals.
+  - A through hole now reaches the solid's box diagonal plus its distance from
+    the box's centre, so patterned copies go through too.
+  - `NumberField` takes a `quantity`. Angles and counts are no longer shown
+    in millimetres, or converted when the display is in inches. That was
+    already wrong for the revolve angle.
+  - Proof:
+    - `pattern.test.ts` covers rows, grids, turns, mirrors, the rules, and
+      the seeds.
+    - `golden-parts.test.ts` patterns a through hole in a row, a boss in a
+      grid, a pocket round an axis, and mirrors a boss, each to its hand
+      volume.
+    - A1's holes are one hole per leg in a row of `holes_per_leg`, and its
+      edit now goes from 2 to 3 per leg.
+    - A4 has 24 grooves in a circular pattern of a `grooves` count. Its edit
+      goes to 18, and the lens of each groove is computed by hand.
+    - `e2e/viewport-interactions.spec.ts` patterns its drilled hole into a
+      row of three.
+    - A1 and A4 now pass all three acceptance checks.
 - ⬜ **3.6 Sketch offset** (A2). Built on the splitting maths `trim.ts` already
   provides, as the earlier roadmap noted.
 - ⬜ **3.7 Shell** (A3). Pick the faces to remove, set the wall thickness, and
@@ -588,7 +618,7 @@ Status: ⬜ Planned
 - ✅ Exact selectable-edge fillet and equal-distance chamfer are integrated, and an oversized radius or distance is reported with the largest one that works instead of failing the part
 - 🔬 Mitered corner fillets: fix OpenCascade 2-edge sharp fillet intersections without falling back to spherical blends or edge-by-edge mutations
 - ⬜ Shell and draft
-- ⬜ Linear, circular, and mirror patterns
+- ✅ Linear, rectangular, circular, and mirror patterns of features (along world axes)
 - ⬜ Sweep and loft
 - ⬜ Multiple bodies and body folders
 - ⬜ Feature suppression, rollback, and reorder

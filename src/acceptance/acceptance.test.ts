@@ -15,10 +15,10 @@ import { buildLBracket, lBracketVolume } from './parts/l-bracket'
 
 type Progress = { id: string; name: string; missing: string[] }
 const progress: Progress[] = [
-  { id: 'A1', name: 'Screw-mount L-bracket', missing: ['linear pattern'] },
+  { id: 'A1', name: 'Screw-mount L-bracket', missing: [] },
   { id: 'A2', name: 'Desk cable clip', missing: ['sketch offset', 'mirror', 'Hole feature'] },
   { id: 'A3', name: 'Electronics enclosure with lid', missing: ['shell', 'multiple bodies', 'rectangular pattern', 'Hole feature', 'per-body export'] },
-  { id: 'A4', name: 'Parametric knob', missing: ['circular pattern'] },
+  { id: 'A4', name: 'Parametric knob', missing: [] },
 ]
 
 beforeAll(loadKernels, 120_000)
@@ -34,8 +34,8 @@ for (const part of progress) {
   if (part.missing.length) it.todo(`${part.id} ${part.name}: complete once Parallax has ${part.missing.join(', ')}`)
 }
 
-describe('A1 screw-mount L-bracket (body, inside fillet, outside chamfer, countersunk holes)', () => {
-  const nominal = { t: 4, length: 50, height: 30, width: 40, r: 4, c: 1 }
+describe('A1 screw-mount L-bracket', () => {
+  const nominal = { t: 4, length: 50, height: 30, width: 40, r: 4, c: 1, n: 2 }
 
   it('builds to the hand-computed geometry', () => {
     const report = inspectPart(buildLBracket())
@@ -47,14 +47,14 @@ describe('A1 screw-mount L-bracket (body, inside fillet, outside chamfer, counte
     expect(report.max).toEqual([50, 0, 30])
   })
 
-  it('survives a thicker plate, a narrower bracket, and a bigger chamfer', () => {
+  it('survives a thicker plate, a narrower bracket, a bigger chamfer, and three holes a leg', () => {
     // The fillet is anchored to the sketch corner, so it has to follow the
     // inside corner out to 6 mm rather than look for it where it used to be.
-    const edited = withParameters(buildLBracket(), { thickness: '6', width: '30', outside_chamfer: '1.5' })
+    const edited = withParameters(buildLBracket(), { thickness: '6', width: '30', outside_chamfer: '1.5', holes_per_leg: '3' })
     const report = inspectPart(edited)
 
     expect(report.valid).toBe(true)
-    expect(report.volume).toBeCloseTo(lBracketVolume({ ...nominal, t: 6, width: 30, c: 1.5 }), 3)
+    expect(report.volume).toBeCloseTo(lBracketVolume({ ...nominal, t: 6, width: 30, c: 1.5, n: 3 }), 3)
     expect(report.min).toEqual([0, -30, 0])
   })
 
@@ -64,8 +64,8 @@ describe('A1 screw-mount L-bracket (body, inside fillet, outside chamfer, counte
   })
 })
 
-describe('A4 parametric knob (body, D-shaft bore, top chamfer)', () => {
-  const nominal = { radius: 15, height: 12, shaft: 6, flat: 4.5, clearance: 0.2, depth: 10, c: 1 }
+describe('A4 parametric knob', () => {
+  const nominal = { radius: 15, height: 12, shaft: 6, flat: 4.5, clearance: 0.2, depth: 10, c: 1, grooves: 24, g: 1 }
 
   it('builds to the hand-computed geometry', () => {
     const report = inspectPart(buildKnob())
@@ -77,14 +77,14 @@ describe('A4 parametric knob (body, D-shaft bore, top chamfer)', () => {
     expect(report.max).toEqual([15, 15, 12])
   })
 
-  it('survives a smaller shaft, more clearance, and a larger knob', () => {
+  it('survives fewer grooves, a smaller shaft, more clearance, and a larger knob', () => {
     // The chamfered rim moves out to radius 20 with the knob. Its anchor names
     // the section corner that swept it, not where the rim used to be.
-    const edited = withParameters(buildKnob(), { shaft: '5', flat: '3.8', clearance: '0.3', knob_radius: '20' })
+    const edited = withParameters(buildKnob(), { grooves: '18', shaft: '5', flat: '3.8', clearance: '0.3', knob_radius: '20' })
     const report = inspectPart(edited)
 
     expect(report.valid).toBe(true)
-    expect(report.volume).toBeCloseTo(knobVolume({ ...nominal, radius: 20, shaft: 5, flat: 3.8, clearance: 0.3 }), 2)
+    expect(report.volume).toBeCloseTo(knobVolume({ ...nominal, grooves: 18, radius: 20, shaft: 5, flat: 3.8, clearance: 0.3 }), 2)
     expect(report.max).toEqual([20, 20, 12])
   })
 

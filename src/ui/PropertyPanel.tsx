@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react'
 import { Download, MousePointer2, Trash2 } from 'lucide-react'
 import { useDocumentStore } from '../core/document-store'
 import { collectDocumentDiagnostics, collectOpenProfileDiagnostics, collectRevolveAxisDiagnostics, findDiagnosticRepair, useFeatureDiagnosticsStore } from '../core/diagnostics'
-import type { Feature, FilletCornerStyle, FilletProfileShape, HoleFeature, HoleForm, HoleParameters, SketchFeature, Vec3 } from '../core/model'
+import type { Feature, FilletCornerStyle, FilletProfileShape, HoleFeature, HoleForm, HoleParameters, PatternFeature, PatternKind, PatternParameters, SketchFeature, Vec3, WorldAxis } from '../core/model'
+import { describePattern, patternProblem, patternSeeds } from '../core/pattern'
 import { applyHolePreset, holeCallout, holePlacements, holeProblem, HOLE_PRESETS } from '../core/hole'
 import { revolveAxisCandidates } from '../core/revolve-axis'
 import { getProfileRegions, sketchBounds } from '../core/sketch'
@@ -32,18 +33,24 @@ function useParameterScope() {
  * Passing `binding` is what makes a field formula-capable. Fields that are not
  * feature parameters — the sketch resize boxes, which run a solver edit rather
  * than set a value — leave it out and keep the old behaviour.
+ *
+ * A length follows the document's display units. An angle or a count is the
+ * same number in every unit system, so it is shown and read as typed.
  */
-function NumberField({ label, value, minAbs, onCommit, binding, formula }: {
+function NumberField({ label, value, minAbs, onCommit, binding, formula, quantity = 'length' }: {
   label: string
   value: number
   minAbs?: number
   onCommit: (value: number) => void
   binding?: { featureId: string; key: string }
   formula?: string
+  quantity?: 'length' | 'angle' | 'count'
 }) {
   const displayUnits = useDocumentStore((state) => state.document.displayUnits ?? 'mm')
   const scope = useParameterScope()
-  const settled = formula ? `=${formula}` : formatLengthInput(value, displayUnits)
+  const isLength = quantity === 'length'
+  const show = (amount: number) => isLength ? formatLength(amount, displayUnits) : `${Math.round(amount * 1e6) / 1e6}${quantity === 'angle' ? '°' : ''}`
+  const settled = formula ? `=${formula}` : isLength ? formatLengthInput(value, displayUnits) : String(Math.round(value * 1e6) / 1e6)
   const [draft, setDraft] = useState(settled)
   const [error, setError] = useState<string | null>(null)
   useEffect(() => setDraft(settled), [settled])
@@ -61,19 +68,20 @@ function NumberField({ label, value, minAbs, onCommit, binding, formula }: {
         return
       }
       if (minAbs !== undefined && Math.abs(result.value) < minAbs) {
-        setError(`That formula gives ${formatLength(result.value, displayUnits)}; the magnitude must be at least ${formatLength(minAbs, displayUnits)}.`)
+        setError(`That formula gives ${show(result.value)}; the magnitude must be at least ${show(minAbs)}.`)
         return
       }
       setError(null)
       useDocumentStore.getState().setFeatureFormula(binding.featureId, binding.key, expression)
       return
     }
-    const parsed = parseLengthInput(draft, displayUnits)
+    const plain = Number(draft.trim())
+    const parsed = isLength ? parseLengthInput(draft, displayUnits) : draft.trim() && Number.isFinite(plain) ? plain : null
     if (parsed === null) {
       setError(displayUnits === 'in-fractional' ? 'Enter a decimal, a fraction such as 1 5/16, or a formula such as =width/2.' : 'Enter a number, or a formula such as =width/2.')
       setDraft(settled)
     } else if (minAbs !== undefined && Math.abs(parsed) < minAbs) {
-      setError(`Enter a value whose magnitude is at least ${formatLength(minAbs, displayUnits)}.`)
+      setError(`Enter a value whose magnitude is at least ${show(minAbs)}.`)
       setDraft(settled)
     } else {
       setError(null)
@@ -90,17 +98,17 @@ function NumberField({ label, value, minAbs, onCommit, binding, formula }: {
           // its text content alone would announce as "Widthmm".
           aria-label={label}
           className={error ? 'invalid' : ''}
-          title={error ?? (formula ? `Driven by ${formula} = ${formatLength(value, displayUnits)}` : undefined)}
+          title={error ?? (formula ? `Driven by ${formula} = ${show(value)}` : undefined)}
           aria-invalid={Boolean(error)}
           value={draft}
           onChange={(event) => { setDraft(event.target.value); setError(null) }}
           onBlur={commit}
           onKeyDown={(event) => { if (event.key === 'Enter') event.currentTarget.blur() }}
         />
-        <em>{formula ? 'fx' : unitLabel(displayUnits)}</em>
+        <em>{formula ? 'fx' : isLength ? unitLabel(displayUnits) : quantity === 'angle' ? '°' : '×'}</em>
       </div>
       {error && <p className="field-error">{error}</p>}
-      {!error && formula && <p className="field-driven">= {formatLength(value, displayUnits)}</p>}
+      {!error && formula && <p className="field-driven">= {show(value)}</p>}
     </label>
   )
 }
@@ -313,6 +321,75 @@ function ExtrudeProperties({ feature }: { feature: Extract<Feature, { kind: 'ext
   )
 }
 
+const AXIS_OPTIONS: WorldAxis[] = ['X', 'Y', 'Z']
+const MIRROR_PLANES: Record<WorldAxis, string> = { X: 'YZ plane', Y: 'XZ plane', Z: 'XY plane' }
+
+function AxisSelect({ label, value, onChange, names }: { label: string; value: WorldAxis; onChange: (axis: WorldAxis) => void; names?: Record<WorldAxis, string> }) {
+  return (
+    <label className="select-field"><span>{label}</span><select aria-label={label} value={value} onChange={(event) => onChange(event.target.value as WorldAxis)}>
+      {AXIS_OPTIONS.map((axis) => <option key={axis} value={axis}>{names?.[axis] ?? axis}</option>)}
+    </select></label>
+  )
+}
+
+function PatternProperties({ feature }: { feature: PatternFeature }) {
+  const updateParameters = useDocumentStore((state) => state.updateParameters)
+  const features = useDocumentStore((state) => state.document.features)
+  const displayUnits = useDocumentStore((state) => state.document.displayUnits ?? 'mm')
+  const { parameters } = feature
+  const seeds = patternSeeds(feature, features)
+  const problem = patternProblem(parameters)
+  const set = (patch: Partial<PatternParameters>) => updateParameters(feature.id, patch)
+  const field = (label: string, key: 'count' | 'spacing' | 'count2' | 'spacing2' | 'angle', quantity: 'length' | 'angle' | 'count') => (
+    <NumberField label={label} quantity={quantity} value={parameters[key]} binding={{ featureId: feature.id, key }} formula={feature.formulas?.[key]} onCommit={(value) => set({ [key]: value })} />
+  )
+  const originAxis = { X: 0, Y: 1, Z: 2 }[parameters.direction]
+  return (
+    <aside className="panel properties-panel">
+      <div className="panel-header"><span>{parameters.pattern === 'mirror' ? 'MIRROR' : 'PATTERN'}</span><button aria-label="Close properties" onClick={() => useDocumentStore.getState().select(null)}>×</button></div>
+      <PropertyIdentity feature={feature} />
+      <div className="property-section">
+        <h3>Arrangement</h3>
+        <label className="select-field"><span>Type</span><select aria-label="Pattern type" value={parameters.pattern} onChange={(event) => set({ pattern: event.target.value as PatternKind })}>
+          <option value="linear">Linear</option>
+          <option value="circular">Circular</option>
+          <option value="mirror">Mirror</option>
+        </select></label>
+        {parameters.pattern === 'linear' && <>
+          {field('Count', 'count', 'count')}
+          {field('Spacing', 'spacing', 'length')}
+          <AxisSelect label="Direction" value={parameters.direction} onChange={(direction) => set({ direction })} />
+          {field('Rows', 'count2', 'count')}
+          {parameters.count2 > 1 && <>
+            {field('Row spacing', 'spacing2', 'length')}
+            <AxisSelect label="Row direction" value={parameters.direction2} onChange={(direction2) => set({ direction2 })} />
+          </>}
+        </>}
+        {parameters.pattern === 'circular' && <>
+          {field('Count', 'count', 'count')}
+          {field('Span', 'angle', 'angle')}
+          <AxisSelect label="Axis" value={parameters.direction} onChange={(direction) => set({ direction })} />
+          {(['X', 'Y', 'Z'] as const).map((axis, index) => (
+            <NumberField key={axis} label={`Axis through ${axis}`} value={parameters.origin[index]} onCommit={(value) => set({ origin: parameters.origin.map((current, at) => at === index ? value : current) as Vec3 })} />
+          ))}
+        </>}
+        {parameters.pattern === 'mirror' && <>
+          <AxisSelect label="Mirror plane" value={parameters.direction} names={MIRROR_PLANES} onChange={(direction) => set({ direction })} />
+          <NumberField label="Plane offset" value={parameters.origin[originAxis]} onCommit={(value) => set({ origin: parameters.origin.map((current, at) => at === originAxis ? value : current) as Vec3 })} />
+        </>}
+      </div>
+      {problem && <div className="dependency-warning"><span>{problem} Nothing is copied until it is fixed.</span></div>}
+      <div className="property-section feature-info">
+        <span>Copies</span><strong className="pattern-summary">{describePattern(parameters, (value) => formatLength(value, displayUnits))}</strong>
+        <span>Of</span><strong>{seeds.length ? seeds.map((seed) => seed.name).join(', ') : 'Nothing'}</strong>
+        <span>Kernel</span><strong>OpenCascade B-rep</strong>
+      </div>
+      {!seeds.length && <div className="dependency-warning"><span>The features this copied are gone. Delete it, or pattern another feature.</span></div>}
+      <button className="delete-feature" onClick={() => useDocumentStore.getState().removeSelected()}><Trash2 size={14} /> Delete {parameters.pattern === 'mirror' ? 'mirror' : 'pattern'}</button>
+    </aside>
+  )
+}
+
 const HOLE_FORMS: { form: HoleForm; label: string }[] = [
   { form: 'simple', label: 'Simple' },
   { form: 'counterbore', label: 'Counterbore' },
@@ -353,7 +430,7 @@ function HoleProperties({ feature }: { feature: HoleFeature }) {
         {parameters.form !== 'simple' && field(parameters.form === 'counterbore' ? 'Counterbore Ø' : 'Countersink Ø', 'headDiameter')}
         {parameters.form === 'counterbore' && field('Counterbore depth', 'headDepth')}
         {parameters.form === 'countersink' && (
-          <NumberField label="Countersink angle" value={parameters.countersinkAngle} minAbs={0.001} binding={{ featureId: feature.id, key: 'countersinkAngle' }} formula={feature.formulas?.countersinkAngle} onCommit={(value) => setSize({ countersinkAngle: value })} />
+          <NumberField label="Countersink angle" quantity="angle" value={parameters.countersinkAngle} minAbs={0.001} binding={{ featureId: feature.id, key: 'countersinkAngle' }} formula={feature.formulas?.countersinkAngle} onCommit={(value) => setSize({ countersinkAngle: value })} />
         )}
       </div>
       {problem && <div className="dependency-warning"><span>{problem} Nothing is drilled until it is fixed.</span></div>}
@@ -495,7 +572,7 @@ function RevolveProperties({ feature }: { feature: Extract<Feature, { kind: 'rev
       <PropertyIdentity feature={feature} />
       <div className="property-section">
         <h3>Extent</h3>
-        <NumberField label="Angle" value={feature.parameters.angle} minAbs={0.001} binding={{ featureId: feature.id, key: 'angle' }} formula={feature.formulas?.angle} onCommit={(value) => updateParameters(feature.id, { angle: Math.min(360, Math.max(0.001, value)) })} />
+        <NumberField label="Angle" quantity="angle" value={feature.parameters.angle} minAbs={0.001} binding={{ featureId: feature.id, key: 'angle' }} formula={feature.formulas?.angle} onCommit={(value) => updateParameters(feature.id, { angle: Math.min(360, Math.max(0.001, value)) })} />
         <RevolveAxisField feature={feature} sketch={source?.kind === 'sketch' ? source : undefined} />
       </div>
       <div className="property-section">
@@ -533,5 +610,6 @@ export function PropertiesPanel({ feature, onReselectFilletEdges }: { feature: F
   if (feature.kind === 'revolve') return <RevolveProperties feature={feature} />
   if (feature.kind === 'fillet') return <FilletProperties feature={feature} onReselectEdges={onReselectFilletEdges} />
   if (feature.kind === 'hole') return <HoleProperties feature={feature} />
+  if (feature.kind === 'pattern') return <PatternProperties feature={feature} />
   return <PrimitiveProperties feature={feature} />
 }

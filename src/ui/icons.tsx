@@ -77,6 +77,27 @@ export function HoleFeatureIcon(props: SVGProps<SVGSVGElement>) {
   )
 }
 
+export function PatternFeatureIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" {...props}>
+      <rect x="3" y="3" width="7" height="7" rx="1" />
+      <rect x="14" y="3" width="7" height="7" rx="1" strokeDasharray="2 2" />
+      <rect x="3" y="14" width="7" height="7" rx="1" strokeDasharray="2 2" />
+      <rect x="14" y="14" width="7" height="7" rx="1" strokeDasharray="2 2" />
+    </svg>
+  )
+}
+
+export function MirrorFeatureIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" {...props}>
+      <path d="M12 2v20" strokeDasharray="2 2" />
+      <path d="M9 6 3 18h6Z" />
+      <path d="m15 6 6 12h-6Z" strokeDasharray="2 2" />
+    </svg>
+  )
+}
+
 export function RevolveFeatureIcon(props: SVGProps<SVGSVGElement>) {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" {...props}>
@@ -96,10 +117,13 @@ const KIND_ICONS = {
   revolve: RevolveFeatureIcon,
   fillet: FilletFeatureIcon,
   hole: HoleFeatureIcon,
+  pattern: PatternFeatureIcon,
 } satisfies Record<Feature['kind'], typeof BoxFeatureIcon>
 
-/** The icon for a feature: its kind's, except that a chamfer is not drawn as a fillet. */
+/** The icon for a feature: its kind's, except that a chamfer is not drawn as a fillet, nor a mirror as a pattern. */
 export function FeatureIcon({ feature, ...props }: { feature: Feature } & SVGProps<SVGSVGElement>) {
-  const Icon = feature.kind === 'fillet' && feature.parameters.blend === 'chamfer' ? ChamferFeatureIcon : KIND_ICONS[feature.kind] ?? BoxFeatureIcon
+  const Icon = feature.kind === 'fillet' && feature.parameters.blend === 'chamfer' ? ChamferFeatureIcon
+    : feature.kind === 'pattern' && feature.parameters.pattern === 'mirror' ? MirrorFeatureIcon
+      : KIND_ICONS[feature.kind] ?? BoxFeatureIcon
   return <Icon {...props} />
 }

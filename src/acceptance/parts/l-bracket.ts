@@ -1,15 +1,15 @@
 import { anchorEdgeReferences } from '../../core/edge-anchor'
 import { applyHolePreset, defaultHoleParameters, holeVolume } from '../../core/hole'
-import { createEmptyDocument, type CadDocument, type ExtrudeFeature, type FilletFeature, type HoleFeature, type HoleParameters, type SketchFeature } from '../../core/model'
+import { createEmptyDocument, type CadDocument, type ExtrudeFeature, type FilletFeature, type HoleFeature, type HoleParameters, type PatternFeature, type SketchFeature } from '../../core/model'
+import { defaultPatternParameters } from '../../core/pattern'
 import { closedPolyline, drivenLength, feature, parameter, settle } from '../harness'
 
 /**
  * A1 — screw-mount L-bracket.
  *
- * Today: the L-shaped body, its inside fillet, a chamfer on the three outside
- * edges, and two countersunk M4 holes in each leg, sunk from the inside of
- * the L where the screw heads sit. Waiting on a linear pattern, so the count
- * per leg can be a parameter rather than a point per hole.
+ * The L-shaped body, its inside fillet, a chamfer on the three outside edges,
+ * and countersunk M4 holes in each leg, sunk from the inside of the L where
+ * the screw heads sit. How many holes each leg has is one parameter.
  *
  * The profile is drawn on XZ, so the base runs along X, the upright along Z,
  * and the width extrudes along -Y.
@@ -59,35 +59,26 @@ export function buildLBracket(): CadDocument {
     edges: anchorEdgeReferences(outsideCorners.map(([x, z]) => ({ start: [x, 0, z], end: [x, -40, z], point: [x, -20, z] })), [sketch, body]),
   })
 
-  // Each leg's holes are points on a sketch lying on that leg's inside face,
-  // the plane held there by the thickness formula. The base's face is XY at
-  // z = t; the upright's is YZ at x = t, where sketch (u, v) is world (y, z).
-  // Both drill against their plane's normal, through the leg.
+  // Each leg's first hole is a point on a sketch lying on that leg's inside
+  // face, the plane held there by the thickness formula. The base's face is
+  // XY at z = t; the upright's is YZ at x = t, where sketch (u, v) is world
+  // (y, z). Both drill against their plane's normal, through the leg.
   //
-  // Across the width the holes sit a quarter in from each side. A
-  // construction ruler runs the width, and each point is held on it at its
-  // formula's distance from the ruler's start, so they follow a width edit.
+  // Across the width, n holes sit at the middles of n equal shares of it. A
+  // construction ruler runs the width, and the first point is held on it half
+  // a share from its start; a linear pattern steps the rest along -Y.
   const holeSketch = (id: string, name: string, plane: 'XY' | 'YZ', start: [number, number], end: [number, number]) => {
     const ruler = { id: `${id}-ruler`, type: 'line' as const, start, end, construction: true }
-    const along = (index: number, formula: string) => {
-      const pointId = `${id}-${index}`
-      const fraction = index === 0 ? 0.25 : 0.75
-      return {
-        entity: { id: pointId, type: 'point' as const, position: [start[0] + (end[0] - start[0]) * fraction, start[1] + (end[1] - start[1]) * fraction] as [number, number], construction: false },
-        constraints: [
-          { id: `${pointId}-on`, type: 'pointOnLine' as const, entityIds: [pointId, ruler.id], pointRefs: ['center' as const] },
-          { id: `${pointId}-at`, type: 'pointDistance' as const, entityIds: [pointId, ruler.id], pointRefs: ['center' as const, 'start' as const], value: 40 * fraction, formula },
-        ],
-      }
-    }
-    const holes = [along(0, 'width / 4'), along(1, '3 * width / 4')]
+    const pointId = `${id}-first`
+    const first = { id: pointId, type: 'point' as const, position: [start[0] + (end[0] - start[0]) / 4, start[1] + (end[1] - start[1]) / 4] as [number, number], construction: false }
     return feature<SketchFeature>({
       id, kind: 'sketch', name, plane, parameters: { planeOffset: t }, formulas: { planeOffset: 'thickness' },
-      entities: [ruler, ...holes.map((hole) => hole.entity)],
+      entities: [ruler, first],
       constraints: [
         { id: `${id}-straight`, type: start[0] === end[0] ? 'vertical' : 'horizontal', entityIds: [ruler.id] },
         drivenLength(ruler.id, 40, 'width'),
-        ...holes.flatMap((hole) => hole.constraints),
+        { id: `${pointId}-on`, type: 'pointOnLine', entityIds: [pointId, ruler.id], pointRefs: ['center'] },
+        { id: `${pointId}-at`, type: 'pointDistance', entityIds: [pointId, ruler.id], pointRefs: ['center', 'start'], value: 10, formula: 'width / (2 * holes_per_leg)' },
       ],
       anchor: { entityId: ruler.id, point: 'start' },
     })
@@ -97,6 +88,13 @@ export function buildLBracket(): CadDocument {
   const uprightHoles = holeSketch('upright-holes', 'Upright hole positions', 'YZ', [0, 18], [-40, 18])
   const holes = (id: string, sketchId: string) => feature<HoleFeature>({
     id, kind: 'hole', name: id, sketchId, parameters: M4_COUNTERSUNK,
+  })
+  const baseHole = holes('Base hole', baseHoles.id)
+  const uprightHole = holes('Upright hole', uprightHoles.id)
+  const rows = feature<PatternFeature>({
+    id: 'hole-rows', kind: 'pattern', name: 'Hole rows', featureIds: [baseHole.id, uprightHole.id],
+    parameters: { ...defaultPatternParameters('linear'), count: 2, spacing: -20, direction: 'Y' },
+    formulas: { count: 'holes_per_leg', spacing: '-width / holes_per_leg' },
   })
 
   return settle({
@@ -110,8 +108,9 @@ export function buildLBracket(): CadDocument {
       parameter('width', '40'),
       parameter('inside_radius', '4'),
       parameter('outside_chamfer', '1'),
+      parameter('holes_per_leg', '2'),
     ],
-    features: [sketch, body, fillet, chamfer, baseHoles, holes('Base holes', baseHoles.id), uprightHoles, holes('Upright holes', uprightHoles.id)],
+    features: [sketch, body, fillet, chamfer, baseHoles, baseHole, uprightHoles, uprightHole, rows],
   })
 }
 
@@ -119,10 +118,10 @@ export function buildLBracket(): CadDocument {
  * Volume by hand: the L's cross-section is the base (length × t) plus the
  * upright above it ((height - t) × t), plus what the inside fillet adds — the
  * r × r square less its quarter circle — less a c × c right triangle at each
- * of the three chamfered corners, all times the width. Then less four
- * countersunk holes, each through the thickness: see `holeVolume`.
+ * of the three chamfered corners, all times the width. Then less n
+ * countersunk holes in each leg, each through the thickness: see `holeVolume`.
  */
-export function lBracketVolume(p: { t: number; length: number; height: number; width: number; r: number; c: number }) {
+export function lBracketVolume(p: { t: number; length: number; height: number; width: number; r: number; c: number; n: number }) {
   const section = p.length * p.t + (p.height - p.t) * p.t + (p.r * p.r - Math.PI * p.r * p.r / 4) - 3 * p.c * p.c / 2
-  return section * p.width - 4 * holeVolume(M4_COUNTERSUNK, p.t)
+  return section * p.width - 2 * p.n * holeVolume(M4_COUNTERSUNK, p.t)
 }

@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
-import { findViewportPoint, plate, readDocument, sketchPoint } from './helpers'
+import { commit, findViewportPoint, plate, readDocument, sketchPoint } from './helpers'
 
 /**
  * Working on the part directly in the 3D view: pulling a face, picking a face
@@ -51,7 +51,7 @@ test('starts a sketch on a picked face of the part', async ({ page }) => {
   expect(sketch.kind === 'sketch' && sketch.attachment?.faceLabel).toBe('Top face')
 })
 
-test('drills a hole at a point sketched on a face of the part', async ({ page }) => {
+test('drills a hole at a point sketched on a face of the part, then patterns it', async ({ page }) => {
   await plate(page)
   await page.getByRole('button', { name: 'Create sketch' }).click()
   await page.getByRole('button', { name: /Pick a model face/ }).click()
@@ -76,9 +76,17 @@ test('drills a hole at a point sketched on a face of the part', async ({ page })
   // A preset resizes it as one choice.
   await page.getByLabel('Hole preset').selectOption('M3 counterbore')
   await expect(page.locator('.hole-callout')).toHaveText('Ø3.4 THRU ⌴ Ø6.5 ↧ 3.3')
+
+  // Then a row of three, stepping back across the plate.
+  await page.getByTitle('Pattern or mirror selected feature').first().click()
+  await commit(page, page.getByLabel('Count', { exact: true }), '3')
+  await commit(page, page.getByLabel('Spacing', { exact: true }), '-10')
+  await expect(page.locator('.pattern-summary')).toHaveText('3 × -10 mm along X')
+  const pattern = (await readDocument(page)).features.find((feature) => feature.kind === 'pattern')
+  expect(pattern).toMatchObject({ featureIds: [hole!.id], parameters: { count: 3, spacing: -10 } })
   await page.getByTitle('Home view (Isometric Z-up)').click()
-  await expect(viewport(page)).toHaveAttribute('data-exact-features', new RegExp(hole!.id), { timeout: 60_000 })
-  await page.screenshot({ path: test.info().outputPath('counterbored-hole.png') })
+  await expect(viewport(page)).toHaveAttribute('data-exact-features', new RegExp(pattern!.id), { timeout: 60_000 })
+  await page.screenshot({ path: test.info().outputPath('patterned-holes.png') })
 })
 
 test('measures between two snapped points on the part', async ({ page }) => {

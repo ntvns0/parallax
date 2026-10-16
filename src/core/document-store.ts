@@ -6,6 +6,7 @@ import {
   createRevolveFeature,
   createFilletFeature,
   createHoleFeature,
+  createPatternFeature,
   createFeature,
   type CadDocument,
   type DisplayUnits,
@@ -29,6 +30,7 @@ import { renameParameterReferences, resolveDocumentFormulas, withoutConstraintFo
 import type { FeatureDiagnostic } from './diagnostics'
 import { normalizeDocument } from './document-migration'
 import { defaultHoleParameters } from './hole'
+import { defaultPatternParameters } from './pattern'
 import { logDiagnostic } from './diagnostics'
 import * as storage from './project-storage'
 import type { ProjectSummary, RecoverySnapshot } from './project-storage'
@@ -124,6 +126,8 @@ type EditorState = {
   addFillet: (feature: FilletFeature) => void
   /** Drill a hole at each point of a sketch into the solid before it. */
   addHoles: (sketchId: string) => void
+  /** Copy a feature in a row, which the property panel can turn into a grid, a ring, or a mirror image. */
+  addPattern: (featureId: string) => void
 }
 
 const persistenceService = new ProjectPersistenceService()
@@ -669,6 +673,12 @@ export const useDocumentStore = create<EditorState>((set, get) => ({
         const sketch = document.features.find((item) => item.id === sketchId)
         if (sketch) sketch.visible = false
       }, feature.id)
+    }),
+
+  addPattern: (featureId) =>
+    set((state) => {
+      const feature = createPatternFeature([featureId], state.document.features.filter((item) => item.kind === 'pattern').length + 1, defaultPatternParameters('linear'))
+      return mutate(state, (document) => document.features.push(feature), feature.id)
     }),
 }))
 

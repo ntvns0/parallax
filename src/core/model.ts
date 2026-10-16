@@ -22,6 +22,32 @@ export type SketchParameters = { planeOffset: number; faceNormalSign?: -1 | 1 }
 export type ExtrudeParameters = { distance: number; symmetric: boolean; edgeRadius: number }
 export type RevolveParameters = { angle: number; axis: 'X' | 'Y' }
 
+export type WorldAxis = 'X' | 'Y' | 'Z'
+
+/** Copies in a row or grid, copies round an axis, or one mirror image. */
+export type PatternKind = 'linear' | 'circular' | 'mirror'
+
+export type PatternParameters = {
+  pattern: PatternKind
+  /** How many there are along `direction`, the original included. */
+  count: number
+  /** From one copy to the next along `direction`; negative runs the other way. */
+  spacing: number
+  /**
+   * Linear: the direction of the row. Circular: the axis turned about.
+   * Mirror: the normal of the mirror plane.
+   */
+  direction: WorldAxis
+  /** A second row direction makes a linear pattern a grid. A count of 1 leaves it a row. */
+  count2: number
+  spacing2: number
+  direction2: WorldAxis
+  /** Circular: the span the copies are spread over. 360 spaces them evenly round a full turn. */
+  angle: number
+  /** Where a circular pattern's axis or the mirror plane passes through. */
+  origin: Vec3
+}
+
 /** A plain bore, one with a flat-bottomed recess for a cap screw's head, or one with a cone for a flat head. */
 export type HoleForm = 'simple' | 'counterbore' | 'countersink'
 
@@ -166,10 +192,10 @@ export type FeatureParameters = BoxParameters | CylinderParameters | SphereParam
  * name is still a compile error.
  */
 export type FeatureParameterPatch = Partial<
-  BoxParameters & CylinderParameters & SphereParameters & SketchParameters & ExtrudeParameters & FilletParameters & RevolveParameters & HoleParameters
+  BoxParameters & CylinderParameters & SphereParameters & SketchParameters & ExtrudeParameters & FilletParameters & RevolveParameters & HoleParameters & PatternParameters
 >
 
-export type FeatureKind = 'box' | 'cylinder' | 'sphere' | 'sketch' | 'extrude' | 'fillet' | 'revolve' | 'hole'
+export type FeatureKind = 'box' | 'cylinder' | 'sphere' | 'sketch' | 'extrude' | 'fillet' | 'revolve' | 'hole' | 'pattern'
 
 export type LineEntity = {
   id: string
@@ -367,12 +393,24 @@ export type HoleFeature = FeatureBase & {
   sketchId: string
 }
 
-export type Feature = PrimitiveFeature | SketchFeature | ExtrudeFeature | FilletFeature | RevolveFeature | HoleFeature
+/**
+ * Copies of earlier extrusions, revolves and holes, made where the pattern
+ * sits in the history. The copies are not features: the count is one number,
+ * so a formula can drive it. Added in schema 10.
+ */
+export type PatternFeature = FeatureBase & {
+  kind: 'pattern'
+  parameters: PatternParameters
+  /** The features copied, each earlier in the history. */
+  featureIds: string[]
+}
+
+export type Feature = PrimitiveFeature | SketchFeature | ExtrudeFeature | FilletFeature | RevolveFeature | HoleFeature | PatternFeature
 
 /** The features the exact kernel builds a solid for, in one list so additions cannot miss a site. */
-export type SolidFeature = Extract<Feature, { kind: 'extrude' | 'fillet' | 'revolve' | 'hole' }>
+export type SolidFeature = Extract<Feature, { kind: 'extrude' | 'fillet' | 'revolve' | 'hole' | 'pattern' }>
 
-export const SOLID_KINDS: readonly SolidFeature['kind'][] = ['extrude', 'fillet', 'revolve', 'hole']
+export const SOLID_KINDS: readonly SolidFeature['kind'][] = ['extrude', 'fillet', 'revolve', 'hole', 'pattern']
 
 export function isSolidFeature(feature: Feature): feature is SolidFeature {
   return (SOLID_KINDS as readonly string[]).includes(feature.kind)
@@ -384,7 +422,7 @@ export function isSolidFeature(feature: Feature): feature is SolidFeature {
  * arrives.
  */
 export function modifiesPreviousSolid(feature: { kind: string }): boolean {
-  return feature.kind === 'fillet' || feature.kind === 'hole'
+  return feature.kind === 'fillet' || feature.kind === 'hole' || feature.kind === 'pattern'
 }
 
 export const CURRENT_SCHEMA_VERSION = 10
@@ -470,6 +508,21 @@ export function createFeature(kind: FeatureKind, index: number, sketchPlane: Ske
       throw new Error('Fillet features require selected edges')
     case 'hole':
       throw new Error('Hole features require a sketch of points')
+    case 'pattern':
+      throw new Error('Pattern features require features to copy')
+  }
+}
+
+export function createPatternFeature(featureIds: string[], index: number, parameters: PatternParameters): PatternFeature {
+  return {
+    id: createId(),
+    kind: 'pattern',
+    name: `${parameters.pattern === 'mirror' ? 'Mirror' : 'Pattern'} ${index}`,
+    parameters,
+    featureIds,
+    position: [0, 0, 0],
+    rotation: [0, 0, 0],
+    visible: true,
   }
 }
 
@@ -576,7 +629,7 @@ export function validateCadDocument(value: unknown): { valid: boolean; errors: s
     if (typeof feature.id !== 'string' || !feature.id) errors.push(`${label} is missing its ID.`)
     else if (featureIds.has(feature.id)) errors.push(`${label} has a duplicate ID.`)
     else featureIds.add(feature.id)
-    if (!['box', 'cylinder', 'sphere', 'sketch', 'extrude', 'fillet', 'revolve', 'hole'].includes(feature.kind)) errors.push(`${label} has an unsupported type.`)
+    if (!['box', 'cylinder', 'sphere', 'sketch', 'extrude', 'fillet', 'revolve', 'hole', 'pattern'].includes(feature.kind)) errors.push(`${label} has an unsupported type.`)
     if (!Array.isArray(feature.position) || feature.position.length !== 3 || feature.position.some((number) => !Number.isFinite(number))) errors.push(`${label} has an invalid position.`)
     if (!feature.parameters || Object.values(feature.parameters).some((parameter) => typeof parameter === 'number' && !Number.isFinite(parameter))) errors.push(`${label} has invalid parameters.`)
     if (feature.formulas !== undefined && (typeof feature.formulas !== 'object' || Object.values(feature.formulas).some((formula) => typeof formula !== 'string'))) errors.push(`${label} has invalid formulas.`)
@@ -624,6 +677,13 @@ export function validateCadDocument(value: unknown): { valid: boolean; errors: s
       if (!['simple', 'counterbore', 'countersink'].includes(feature.parameters.form)) errors.push(`${name} has an unsupported form.`)
       if (!(feature.parameters.diameter > 0)) errors.push(`${name} has an invalid diameter.`)
       if (typeof feature.parameters.through !== 'boolean') errors.push(`${name} has an invalid depth setting.`)
+    }
+    if (feature.kind === 'pattern') {
+      const name = feature.name || 'Pattern'
+      if (!Array.isArray(feature.featureIds) || feature.featureIds.some((id) => typeof id !== 'string')) errors.push(`${name} has an invalid feature list.`)
+      if (!['linear', 'circular', 'mirror'].includes(feature.parameters.pattern)) errors.push(`${name} has an unsupported pattern type.`)
+      const { origin } = feature.parameters
+      if (!Array.isArray(origin) || origin.length !== 3 || origin.some((value) => !Number.isFinite(value))) errors.push(`${name} has an invalid origin.`)
     }
   }
   return { valid: errors.length === 0, errors }

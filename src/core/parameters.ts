@@ -156,6 +156,7 @@ export type BindableField = {
 }
 
 const positive = (label: string) => (value: number) => (value > 0 ? null : `${label} must be greater than zero.`)
+const wholeCount = (label: string) => (value: number) => (Number.isInteger(value) && value >= 1 ? null : `${label} must be a whole number, at least 1.`)
 
 const BINDABLE_FIELDS: Record<FeatureKind, BindableField[]> = {
   box: [
@@ -183,6 +184,17 @@ const BINDABLE_FIELDS: Record<FeatureKind, BindableField[]> = {
     { key: 'radius2', label: 'Second radius', validate: positive('A fillet radius') },
   ],
   revolve: [
+    {
+      key: 'angle',
+      label: 'Angle',
+      validate: (value) => (value > 0 && value <= 360 ? null : 'An angle must be greater than zero and no more than 360°.'),
+    },
+  ],
+  pattern: [
+    { key: 'count', label: 'Count', validate: wholeCount('A pattern count') },
+    { key: 'spacing', label: 'Spacing', validate: (value) => (value !== 0 ? null : 'A spacing cannot be zero.') },
+    { key: 'count2', label: 'Second count', validate: wholeCount('The second count') },
+    { key: 'spacing2', label: 'Second spacing', validate: (value) => (value !== 0 ? null : 'A spacing cannot be zero.') },
     {
       key: 'angle',
       label: 'Angle',

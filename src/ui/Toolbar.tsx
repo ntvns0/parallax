@@ -7,9 +7,10 @@ import {
 import { useDocumentStore } from '../core/document-store'
 import { isSolidFeature, type Feature, type FeatureKind, type FilletBlend, type SketchFeature, type SolidFeature } from '../core/model'
 import { getProfileRegions } from '../core/sketch'
+import { isPatternable } from '../core/pattern'
 import { defaultExtrudeDistance, materialDepthUnderSketch, FALLBACK_EXTRUDE_DISTANCE_MM } from '../core/extrude-defaults'
 import { cachedExactMesh } from '../kernel/exact-kernel'
-import { BoxFeatureIcon, ChamferFeatureIcon, CylinderFeatureIcon, ExtrudeFeatureIcon, FilletFeatureIcon, HoleFeatureIcon, RevolveFeatureIcon, SketchFeatureIcon, SphereFeatureIcon } from './icons'
+import { BoxFeatureIcon, ChamferFeatureIcon, CylinderFeatureIcon, ExtrudeFeatureIcon, FilletFeatureIcon, HoleFeatureIcon, PatternFeatureIcon, RevolveFeatureIcon, SketchFeatureIcon, SphereFeatureIcon } from './icons'
 
 export function IconButton({ label, disabled, active, onClick, children }: {
   label: string
@@ -64,6 +65,7 @@ export function ModelToolbar({
   const canExtrude = selectedFeature?.kind === 'sketch' && getProfileRegions(selectedFeature).length > 0
   const canFillet = selectedFeature !== null && isSolidFeature(selectedFeature)
   const canHole = selectedFeature?.kind === 'sketch' && canDrill(selectedFeature)
+  const canPattern = selectedFeature !== null && isPatternable(selectedFeature)
   return (
     <div className="model-toolbar">
       <IconButton label="Select" active={!measureActive} onClick={() => onMeasureChange(false)}><MousePointer2 /></IconButton>
@@ -90,6 +92,9 @@ export function ModelToolbar({
       <IconButton label={canHole ? 'Hole at sketch points' : 'Select a sketch with points, on or above a solid, to drill holes'} disabled={!canHole} onClick={() => {
         if (selectedFeature?.kind === 'sketch') useDocumentStore.getState().addHoles(selectedFeature.id)
       }}><HoleFeatureIcon /></IconButton>
+      <IconButton label={canPattern ? 'Pattern or mirror selected feature' : 'Select an extrusion, revolve or hole to pattern'} disabled={!canPattern} onClick={() => {
+        if (selectedFeature && isPatternable(selectedFeature)) useDocumentStore.getState().addPattern(selectedFeature.id)
+      }}><PatternFeatureIcon /></IconButton>
     </div>
   )
 }

@@ -1,14 +1,16 @@
 import { normalizeArc } from '../../core/arc-geometry'
 import { anchorEdgeReferences } from '../../core/edge-anchor'
-import { createEmptyDocument, createId, type CadDocument, type ExtrudeFeature, type FilletFeature, type RevolveFeature, type SketchFeature } from '../../core/model'
+import { createEmptyDocument, createId, type CadDocument, type ExtrudeFeature, type FilletFeature, type PatternFeature, type RevolveFeature, type SketchFeature } from '../../core/model'
+import { defaultPatternParameters } from '../../core/pattern'
 import { closedPolyline, drivenLength, feature, parameter, settle } from '../harness'
 
 /**
  * A4 — parametric knob.
  *
- * Today: the body revolved about a construction centreline, a blind D-shaft
- * bore with a clearance allowance, and a chamfered top edge. Waiting on a
- * circular pattern for the grip grooves.
+ * The body revolved about a construction centreline, a blind D-shaft bore
+ * with a clearance allowance, grip grooves round the rim in a circular
+ * pattern, and a chamfered top edge. The grooves stop short of the top, so
+ * the chamfered rim stays one whole circle.
  *
  * The flat is placed the way a shaft is specified: by its distance from the
  * bore centre, a centre-to-line dimension.
@@ -68,6 +70,30 @@ export function buildKnob(): CadDocument {
     parameters: { distance: 10, symmetric: false, edgeRadius: 0 }, formulas: { distance: 'bore_depth' },
   })
 
+  // One groove: a circle centred on the rim, its centre at the end of a
+  // construction line as long as the knob's radius, cut up from the bottom.
+  const reach = { id: 'groove-reach', type: 'line' as const, start: [0, 0] as [number, number], end: [radius, 0] as [number, number], construction: true }
+  const groove = { id: 'groove', type: 'circle' as const, center: [radius, 0] as [number, number], radius: 1, construction: false }
+  const grooveSketch = feature<SketchFeature>({
+    id: 'groove-sketch', kind: 'sketch', name: 'Groove', plane: 'XY', parameters: { planeOffset: 0 },
+    entities: [reach, groove],
+    constraints: [
+      { id: createId(), type: 'horizontal', entityIds: [reach.id] },
+      drivenLength(reach.id, radius, 'knob_radius'),
+      { id: createId(), type: 'coincident', entityIds: [reach.id, groove.id], pointRefs: ['end', 'center'] },
+      { id: createId(), type: 'radius', entityIds: [groove.id], value: 1, formula: 'groove_radius' },
+    ],
+    anchor: { entityId: reach.id, point: 'start' },
+  })
+  const grooveCut = feature<ExtrudeFeature>({
+    id: 'groove-cut', kind: 'extrude', name: 'Groove', sketchId: grooveSketch.id, operation: 'cut',
+    parameters: { distance: 9, symmetric: false, edgeRadius: 0 }, formulas: { distance: 'knob_height - 3' },
+  })
+  const grooves = feature<PatternFeature>({
+    id: 'grooves', kind: 'pattern', name: 'Grooves', featureIds: [grooveCut.id],
+    parameters: { ...defaultPatternParameters('circular'), count: 24 }, formulas: { count: 'grooves' },
+  })
+
   // The top rim, swept round the axis by the section's top outside corner. It
   // is anchored to that corner, so it follows the knob's radius and height.
   const topChamfer = feature<FilletFeature>({
@@ -88,22 +114,37 @@ export function buildKnob(): CadDocument {
       parameter('clearance', '0.2'),
       parameter('bore_depth', '10'),
       parameter('top_chamfer', '1'),
+      parameter('grooves', '24'),
+      parameter('groove_radius', '1'),
     ],
-    features: [body, revolve, bore, boreCut, topChamfer],
+    features: [body, revolve, bore, boreCut, grooveSketch, grooveCut, grooves, topChamfer],
   })
 }
 
 /**
+ * The area a groove takes out of the knob's outline: where a circle of radius
+ * g centred on the rim overlaps the disc of radius R. The usual lens of two
+ * circles, with their centres R apart.
+ */
+export function grooveArea(R: number, g: number) {
+  const d = R
+  return g * g * Math.acos((d * d + g * g - R * R) / (2 * d * g))
+    + R * R * Math.acos((d * d + R * R - g * g) / (2 * d * R))
+    - 0.5 * Math.sqrt((-d + g + R) * (d + g - R) * (d - g + R) * (d + g + R))
+}
+
+/**
  * Volume by hand: the cylinder, less the D-bore's area times its depth, less
- * the chamfer. The D is the bore circle less the segment beyond the flat, and
+ * the grooves, each its lens of area times its height, less the chamfer. The D is the bore circle less the segment beyond the flat, and
  * that segment's area is r²·acos(d/r) − d·√(r² − d²). The chamfer is a c × c
  * right triangle swept round the axis; by Pappus that is its area times the
  * circumference at its centroid, c/3 in from the rim.
  */
-export function knobVolume(p: { radius: number; height: number; shaft: number; flat: number; clearance: number; depth: number; c: number }) {
+export function knobVolume(p: { radius: number; height: number; shaft: number; flat: number; clearance: number; depth: number; c: number; grooves: number; g: number }) {
   const r = (p.shaft + p.clearance) / 2
   const d = p.flat + p.clearance / 2 - r
   const segment = r * r * Math.acos(d / r) - d * Math.sqrt(r * r - d * d)
   const chamfer = (p.c * p.c / 2) * 2 * Math.PI * (p.radius - p.c / 3)
-  return Math.PI * p.radius * p.radius * p.height - (Math.PI * r * r - segment) * p.depth - chamfer
+  const grooves = p.grooves * grooveArea(p.radius, p.g) * (p.height - 3)
+  return Math.PI * p.radius * p.radius * p.height - (Math.PI * r * r - segment) * p.depth - grooves - chamfer
 }

@@ -8,6 +8,7 @@ import {
   createFeature,
   createFilletFeature,
   createHoleFeature,
+  createPatternFeature,
   createId,
   createRevolveFeature,
   isSolidFeature,
@@ -15,6 +16,7 @@ import {
   type Feature,
   type FilletEdgeReference,
   type HoleParameters,
+  type PatternParameters,
   type RevolveFeature,
   type SketchEntity,
   type SketchFeature,
@@ -23,6 +25,7 @@ import {
 import { normalizeArc } from '../core/arc-geometry'
 import { anchorEdgeReferences } from '../core/edge-anchor'
 import { holeVolume } from '../core/hole'
+import { defaultPatternParameters } from '../core/pattern'
 import { buildOperationChain } from './operation-chain'
 import { evaluateOperations } from './evaluate-chain'
 import { edgeGeometry } from './fillet-apply'
@@ -347,6 +350,57 @@ describe('golden parts', () => {
     expect(drilled({ ...sizes, through: false })).toBeCloseTo(40 * 30 * 6 - 3 * holeVolume(sizes, 4), 4)
     expect(drilled({ ...sizes, form: 'counterbore' })).toBeCloseTo(40 * 30 * 6 - 3 * holeVolume({ ...sizes, form: 'counterbore' }, 6), 4)
     expect(drilled({ ...sizes, form: 'countersink' })).toBeCloseTo(40 * 30 * 6 - 3 * holeVolume({ ...sizes, form: 'countersink' }, 6), 4)
+  })
+
+  describe('patterns', () => {
+    // A 40 × 30 × 6 plate on XY, with something small to copy.
+    const plateFeatures = () => {
+      const base = sketchOf(rectangle([0, 0], [40, 30]), 1)
+      return [base, extrudeOf(base, 6)] as Feature[]
+    }
+    const pattern = (seedId: string, parameters: Partial<PatternParameters> & Pick<PatternParameters, 'pattern'>) =>
+      createPatternFeature([seedId], 1, { ...defaultPatternParameters(parameters.pattern), ...parameters })
+
+    it('repeats a through hole along a row', () => {
+      const points = sketchOf([{ id: createId(), type: 'point', position: [5, 15], construction: false }], 2)
+      points.parameters.planeOffset = 6
+      const sizes: HoleParameters = { form: 'simple', diameter: 4, depth: 6, through: true, headDiameter: 8, headDepth: 2, countersinkAngle: 90 }
+      const hole = createHoleFeature(points.id, 1, sizes)
+      const volume = volumeOf([...plateFeatures(), points, hole, pattern(hole.id, { pattern: 'linear', count: 4, spacing: 10, direction: 'X' })])
+      expect(volume).toBeCloseTo(40 * 30 * 6 - 4 * holeVolume(sizes, 6), 4)
+    })
+
+    it('repeats a boss in a grid', () => {
+      const bossSketch = sketchOf(rectangle([2, 2], [6, 6]), 2)
+      bossSketch.parameters.planeOffset = 6
+      const boss = extrudeOf(bossSketch, 3, 'add', 2)
+      const volume = volumeOf([...plateFeatures(), bossSketch, boss,
+        pattern(boss.id, { pattern: 'linear', count: 3, spacing: 12, direction: 'X', count2: 2, spacing2: 15, direction2: 'Y' })])
+      expect(volume).toBeCloseTo(40 * 30 * 6 + 6 * 4 * 4 * 3, 4)
+    })
+
+    it('turns a pocket round an axis', () => {
+      // A disc of radius 15 and six 2 × 2 × 2 pockets round it at radius 10.
+      const disc = sketchOf([circle([0, 0], 15)], 1)
+      const pocketSketch = sketchOf(rectangle([9, -1], [11, 1]), 2)
+      pocketSketch.parameters.planeOffset = 6
+      const pocket = extrudeOf(pocketSketch, -2, 'cut', 2)
+      const volume = volumeOf([disc, extrudeOf(disc, 6), pocketSketch, pocket,
+        pattern(pocket.id, { pattern: 'circular', count: 6, angle: 360, direction: 'Z', origin: [0, 0, 0] })])
+      expect(volume).toBeCloseTo(Math.PI * 225 * 6 - 6 * 8, 4)
+    })
+
+    it('mirrors a boss across a plane', () => {
+      const base = sketchOf(rectangle([-20, -10], [20, 10]), 1)
+      const bossSketch = sketchOf(rectangle([5, -2], [9, 2]), 2)
+      bossSketch.parameters.planeOffset = 4
+      const boss = extrudeOf(bossSketch, 5, 'add', 2)
+      const features = [base, extrudeOf(base, 4), bossSketch, boss, pattern(boss.id, { pattern: 'mirror', direction: 'X', origin: [0, 0, 0] })]
+      const part = inspect(features)
+      expect(part.volume).toBeCloseTo(40 * 20 * 4 + 2 * 4 * 4 * 5, 4)
+      // The copy lands at x = -9..-5, so the bosses sit symmetrically.
+      expectPoint(part.bounds.max, [20, 10, 9])
+    })
   })
 
   it('revolves a solid cylinder when the profile meets the axis', () => {

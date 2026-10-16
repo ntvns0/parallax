@@ -26,6 +26,7 @@ function documentGeometrySignature() {
     ...(feature.kind === 'sketch' ? { plane: feature.plane, entities: feature.entities, attachment: feature.attachment } : {}),
     ...(feature.kind === 'extrude' || feature.kind === 'revolve' ? { sketchId: feature.sketchId, operation: feature.operation } : {}),
     ...(feature.kind === 'hole' ? { sketchId: feature.sketchId } : {}),
+    ...(feature.kind === 'pattern' ? { featureIds: feature.featureIds } : {}),
     ...(feature.kind === 'fillet' ? { edges: feature.edges } : {}),
   })))
 }

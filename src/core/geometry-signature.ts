@@ -65,6 +65,7 @@ function featureSignature(feature: Feature): string {
     return `${base}:${feature.edges.map(edgeSignature).join(';')}`
   }
   if (feature.kind === 'hole') return `${base}:${feature.sketchId}`
+  if (feature.kind === 'pattern') return `${base}:${feature.featureIds.join('+')}`
   return base
 }
 

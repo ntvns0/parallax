@@ -1,4 +1,5 @@
 import { holeCallout, holePlacements } from '../core/hole'
+import { describePattern, patternSeeds } from '../core/pattern'
 import type { BoxParameters, CylinderParameters, DocumentParameter, Feature, SphereParameters } from '../core/model'
 import { resolveParameterTable } from '../core/parameters'
 import type { ParameterRow } from './sheet-furniture'
@@ -81,6 +82,11 @@ export function describeModelParameters(
           label: `${feature.name}${count > 1 ? ` ×${count}` : ''}`,
           value: feature.parameters.preset ? `${feature.parameters.preset}: ${callout}` : callout,
         })
+        break
+      }
+      case 'pattern': {
+        const seeds = patternSeeds(feature, features).map((seed) => seed.name).join(', ')
+        rows.push({ label: `${feature.name}${seeds ? ` (${seeds})` : ''}`, value: describePattern(feature.parameters, formatValue) })
         break
       }
       case 'sketch':

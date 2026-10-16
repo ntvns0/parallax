@@ -1,5 +1,6 @@
 import { draw, drawCircle, Plane, type Shape3D } from 'replicad'
 import { holeSection, HOLE_OVERSHOOT_MM } from '../core/hole'
+import type { PatternTransform } from '../core/pattern'
 import type { Vec3 } from '../core/model'
 import { arcAlong, type ClosedProfile, type ProfileRegion } from '../core/sketch'
 import { arcMidPoint } from '../core/arc-geometry'
@@ -12,6 +13,7 @@ import type {
   KernelFilletOperation,
   KernelHoleOperation,
   KernelOperation,
+  KernelPatternSeed,
   KernelRevolveOperation,
 } from './kernel-types'
 
@@ -139,15 +141,17 @@ function perpendicular(direction: Vec3): Vec3 {
  * half-section drawn on a plane through its own axis — out from the axis
  * along x, down into the material along y — and revolved a full turn.
  *
- * "Through" is as deep as the farthest corner of the solid's box from the
- * hole, which is through everything there is in any direction.
+ * "Through" is the solid's box diagonal plus the hole's distance from the
+ * box's centre. That is through everything there is from the hole, and from
+ * anywhere in the box a pattern might move a copy of it to.
  */
 function buildHoleTool(operation: KernelHoleOperation, solid: Shape3D): Shape3D {
   const [min, max] = solid.boundingBox.bounds
+  const diagonal = Math.hypot(max[0] - min[0], max[1] - min[1], max[2] - min[2])
+  const centre = [0, 1, 2].map((axis) => (min[axis] + max[axis]) / 2)
   let tool: Shape3D | null = null
   for (const placement of operation.placements) {
-    const reach = Math.max(...[min, max].flatMap((x) => [min, max].flatMap((y) => [min, max].map((z) =>
-      Math.hypot(x[0] - placement.origin[0], y[1] - placement.origin[1], z[2] - placement.origin[2])))))
+    const reach = diagonal + Math.hypot(...placement.origin.map((value, axis) => value - centre[axis]))
     const depth = operation.parameters.through ? reach + HOLE_OVERSHOOT_MM : operation.parameters.depth
     const section = holeSection(operation.parameters, depth)
     const radial = perpendicular(placement.direction)
@@ -166,6 +170,57 @@ function buildHoleTool(operation: KernelHoleOperation, solid: Shape3D): Shape3D 
     bore.delete()
   }
   if (!tool) throw new Error('The hole sketch has no points to drill.')
+  return tool
+}
+
+/**
+ * The tool a feature cuts or adds with: its sweep, rounded along its edges
+ * when asked, or its holes, which need the solid to know how deep "through"
+ * is. Fresh every call, so the caller owns it.
+ */
+function buildSeedTool(seed: KernelPatternSeed, solid: Shape3D | null): Shape3D {
+  if (seed.type === 'hole') {
+    if (!solid) throw new Error('A hole needs a solid to drill.')
+    return step('buildHoleTool', () => buildHoleTool(seed, solid))
+  }
+  const tool = step('buildTool', () => seed.type === 'revolve' ? buildRevolveTool(seed) : buildTool(seed))
+  if (seed.type !== 'extrude' || seed.edgeRadius <= 0) return tool
+  const filleted = step('toolFillet', () => tool.fillet(seed.edgeRadius) as Shape3D)
+  tool.delete()
+  return filleted
+}
+
+/** A copy of `shape` moved by one pattern transform. `shape` itself is left alone. */
+function transformedCopy(shape: Shape3D, transform: PatternTransform): Shape3D {
+  const copy = shape.clone()
+  if (transform.kind === 'translate') return copy.translate(transform.offset)
+  if (transform.kind === 'rotate') return copy.rotate(transform.degrees, transform.origin, transform.axis)
+  return copy.mirror(transform.normal, transform.origin)
+}
+
+/**
+ * Every copy a pattern makes of one seed, fused into one tool so the solid
+ * takes a single boolean for all of them.
+ */
+function buildPatternTool(seed: KernelPatternSeed, solid: Shape3D, transforms: PatternTransform[]): Shape3D {
+  const original = buildSeedTool(seed, solid)
+  let tool: Shape3D | null = null
+  try {
+    for (const transform of transforms) {
+      const copy = step('patternCopy', () => transformedCopy(original, transform))
+      if (!tool) {
+        tool = copy
+        continue
+      }
+      const previous: Shape3D = tool
+      tool = step('patternFuse', () => previous.fuse(copy) as Shape3D)
+      previous.delete()
+      copy.delete()
+    }
+  } finally {
+    original.delete()
+  }
+  if (!tool) throw new Error('The pattern makes no copies.')
   return tool
 }
 
@@ -248,7 +303,7 @@ function applyOperations(
       // Holes need something to drill. Before any solid there is nothing to do.
       if (!shape) continue
       const previous: Shape3D = shape
-      const tool = step('buildHoleTool', () => buildHoleTool(operation, previous))
+      const tool = buildSeedTool(operation, previous)
       shape = step('holeCut', () => previous.cut(tool) as Shape3D)
       step('holeCutDelete', () => {
         release(previous)
@@ -258,10 +313,24 @@ function applyOperations(
       continue
     }
 
-    const tool = step('buildTool', () => operation.type === 'revolve' ? buildRevolveTool(operation) : buildTool(operation))
-    const filletedTool = step('toolFillet', () =>
-      operation.type === 'extrude' && operation.edgeRadius > 0 ? tool.fillet(operation.edgeRadius) : tool)
-    step('toolFilletDelete', () => { if (filletedTool !== tool) release(tool) })
+    if (operation.type === 'pattern') {
+      // Copies of a cut or a boss need a solid to act on, as holes do.
+      if (!shape) continue
+      for (const seed of operation.seeds) {
+        const previous: Shape3D = shape
+        const copies = buildPatternTool(seed, previous, operation.transforms)
+        const cuts = seed.type === 'hole' || seed.operation === 'cut'
+        shape = step('patternBoolean', () => cuts ? previous.cut(copies) as Shape3D : previous.fuse(copies) as Shape3D)
+        step('patternBooleanDelete', () => {
+          release(previous)
+          release(copies)
+        })
+      }
+      onPrefix?.(index, shape, [...unresolved])
+      continue
+    }
+
+    const filletedTool = buildSeedTool(operation, shape)
 
     if (!shape || operation.operation === 'newBody') {
       const replaced = shape

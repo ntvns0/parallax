@@ -174,6 +174,7 @@ export function createPreviewGeometry(feature: Feature, features: Feature[] = []
     }
     case 'fillet':
     case 'hole':
+    case 'pattern':
       // Fillets and holes are exact-only operations; the viewport keeps the
       // preceding solid visible until the result arrives from OpenCascade.
       return new THREE.BufferGeometry()
