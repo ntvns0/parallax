@@ -1,6 +1,7 @@
 import { appendFileSync } from 'node:fs'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { inspectPart, loadKernels, roundTrip, solidCacheKey, withParameters } from './harness'
+import { buildCableClip, cableClipHeight, cableClipVolume } from './parts/cable-clip'
 import { buildKnob, knobVolume } from './parts/knob'
 import { buildLBracket, lBracketVolume } from './parts/l-bracket'
 
@@ -16,7 +17,7 @@ import { buildLBracket, lBracketVolume } from './parts/l-bracket'
 type Progress = { id: string; name: string; missing: string[] }
 const progress: Progress[] = [
   { id: 'A1', name: 'Screw-mount L-bracket', missing: [] },
-  { id: 'A2', name: 'Desk cable clip', missing: ['sketch offset', 'mirror', 'Hole feature'] },
+  { id: 'A2', name: 'Desk cable clip', missing: [] },
   { id: 'A3', name: 'Electronics enclosure with lid', missing: ['shell', 'multiple bodies', 'rectangular pattern', 'Hole feature', 'per-body export'] },
   { id: 'A4', name: 'Parametric knob', missing: [] },
 ]
@@ -60,6 +61,37 @@ describe('A1 screw-mount L-bracket', () => {
 
   it('reopens as the same solid', () => {
     const part = buildLBracket()
+    expect(solidCacheKey(roundTrip(part))).toBe(solidCacheKey(part))
+  })
+})
+
+describe('A2 desk cable clip', () => {
+  const nominal = { length: 40, t: 3, channel: 10, wall: 2, opening: 7, depth: 15 }
+
+  it('builds to the hand-computed geometry', () => {
+    const report = inspectPart(buildCableClip())
+
+    expect(report.valid).toBe(true)
+    expect(report.bodies).toBe(1)
+    expect(report.volume).toBeCloseTo(cableClipVolume(nominal), 3)
+    expect(report.min).toEqual([-20, -15, 0])
+    expect(report.max.slice(0, 2)).toEqual([20, 0])
+    expect(report.max[2]).toBeCloseTo(cableClipHeight(nominal), 2)
+  })
+
+  it('survives a wider channel and a thicker wall', () => {
+    // The outside follows the inside by the wall, and the lips stay straight
+    // and the opening's width apart.
+    const edited = withParameters(buildCableClip(), { channel: '14', wall: '2.5' })
+    const report = inspectPart(edited)
+
+    expect(report.valid).toBe(true)
+    expect(report.volume).toBeCloseTo(cableClipVolume({ ...nominal, channel: 14, wall: 2.5 }), 3)
+    expect(report.max[2]).toBeCloseTo(cableClipHeight({ ...nominal, channel: 14, wall: 2.5 }), 2)
+  })
+
+  it('reopens as the same solid', () => {
+    const part = buildCableClip()
     expect(solidCacheKey(roundTrip(part))).toBe(solidCacheKey(part))
   })
 })

@@ -90,7 +90,7 @@ Every part is checked three ways:
 | # | Part | What it exercises | Edit test | Missing today |
 | --- | --- | --- | --- | --- |
 | A1 | **Screw-mount L-bracket.** 40 mm wide, legs of 50 and 30 mm, 4 mm thick, R4 inside corner, 1 mm chamfer on outside edges, two countersunk M4 holes per leg | Face sketches, extrude, fillet, chamfer, Hole, linear pattern | Thickness 4 → 6, hole count 2 → 3 per leg | ✅ Passes all three checks. Its hole sketches sit on base planes, held at the leg faces by the thickness formula, not attached to the faces |
-| A2 | **Desk cable clip.** Screw-down base, a C-shaped Ø10 cable channel with 2 mm walls and a 7 mm snap opening, symmetric about a centreline, 15 mm deep, one countersunk hole in the base | Arcs, trim, sketch fillet, construction centreline, symmetric constraint, offset, mirror | Channel Ø10 → Ø14, wall 2 → 2.5 | Not built yet. Its tools exist, with the symmetric constraint standing in for a sketch mirror |
+| A2 | **Desk cable clip.** Screw-down base, a C-shaped Ø10 cable channel with 2 mm walls and a 7 mm snap opening, symmetric about a centreline, 15 mm deep, a countersunk M3 hole in each wing of the base, one the mirror of the other | Arcs, construction centreline, symmetric constraint, offset intent, Hole, feature mirror | Channel Ø10 → Ø14, wall 2 → 2.5 | ✅ Passes all three checks. It was one hole until the part was built: a single centred hole would go through the channel. The outside of the channel is authored as offset leaves it, concentric at the inner radius plus `wall`, not by calling the offset tool. Trim and sketch fillet are not needed by it |
 | A3 | **Electronics enclosure with lid.** 80 × 50 × 30 mm box, shelled to 2 mm with an open top, R3 vertical edges, four Ø6 standoffs with Ø4.2 heat-set insert holes in a rectangular pattern, a USB-C cutout in a side wall, and a separate lid body with a lip set by a `clearance = 0.2 mm` parameter and a pattern of vent slots | Shell, multiple bodies, rectangular pattern, side-face sketches, Hole, per-body export | Box 80 × 50 → 100 × 60, clearance 0.2 → 0.3 | Shell, multiple bodies, rectangular pattern, Hole, per-body export |
 | A4 | **Parametric knob.** A revolved body, a 6 mm D-shaft bore with the flat at 4.5 mm plus clearance, 24 grip grooves in a circular pattern, and a chamfered top edge | Revolve, construction axis, circular pattern, chamfer, formula-driven dimensions | Groove count 24 → 18, shaft 6 → 5 | ✅ Passes all three checks |
 
@@ -493,6 +493,9 @@ it needs one.
       can flip a line copy to the other side. Small edits hold.
     - A sketch mirror across a centreline still does not exist. A2 uses the
       symmetric constraint instead.
+  - A2, the cable clip, now passes all three acceptance checks. Its channel
+    wall is the concentric-plus-radius pair an offset records, and its edit
+    widens the channel and thickens the wall together.
 - ⬜ **3.7 Shell** (A3). Pick the faces to remove, set the wall thickness, and
   report the thickness that would work when OpenCascade refuses — the same
   repair pattern as an oversized fillet.
