@@ -85,6 +85,12 @@ button { color: inherit; }
 .origin-planes button { color: #66716c; background: transparent; border: 0; border-radius: 4px; padding: 4px 8px; text-align: left; font-size: 9px; cursor: pointer; }
 .origin-planes button:hover { color: var(--accent); background: #1c2521; }
 .feature-list { flex: 1; padding: 7px; overflow: auto; }
+.body-list { display: grid; gap: 2px; padding: 6px 7px 8px; border-bottom: 1px solid var(--line-soft); }
+.body-list-label { padding: 2px 6px 4px; font-size: 9px; letter-spacing: .13em; color: #68736e; font-weight: 600; }
+.body-row { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; padding: 6px 8px; color: #9ba7a2; background: transparent; border: 1px solid transparent; border-radius: 5px; font-size: 11px; text-align: left; cursor: pointer; }
+.body-row small { color: #66716c; font-size: 9px; }
+.body-row:hover { background: #191d1c; }
+.body-row.selected { background: #1c2a25; border-color: #2c5747; color: #d8e6df; }
 .feature-row { display: grid; grid-template-columns: 1fr 27px; align-items: center; width: 100%; height: 35px; background: transparent; border: 1px solid transparent; border-radius: 5px; padding: 0 3px 0 0; text-align: left; color: #9ba7a2; font-size: 11px; }
 .feature-select { min-width: 0; height: 32px; display: grid; grid-template-columns: 30px 1fr auto; align-items: center; color: inherit; background: transparent; border: 0; padding: 0 3px; text-align: left; cursor: pointer; }
 .feature-select span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

@@ -29,7 +29,7 @@ import { holeVolume } from '../core/hole'
 import { defaultPatternParameters } from '../core/pattern'
 import { faceReference } from '../core/shell'
 import { buildOperationChain } from './operation-chain'
-import { evaluateOperations } from './evaluate-chain'
+import { evaluateBodies, evaluateOperations } from './evaluate-chain'
 import { edgeGeometry } from './fillet-apply'
 import { parseStoredDocument } from '../core/document-migration'
 
@@ -307,6 +307,33 @@ describe('golden parts', () => {
     const volume = volumeOf([...base, createFilletFeature(corners, 1, 3)])
 
     expect(volume).toBeCloseTo(20 * 20 * 10 - 4 * (9 - Math.PI * 9 / 4) * 10, 5)
+  })
+
+  describe('bodies', () => {
+    it('cuts an earlier body without touching the one after it', () => {
+      const boxSketch = sketchOf(rectangle([0, 0], [20, 20]))
+      const box = extrudeOf(boxSketch, 10)
+      const lidSketch = sketchOf(rectangle([30, 0], [50, 20]), 2)
+      const lid = extrudeOf(lidSketch, 4, 'newBody', 2)
+      const holeSketch = sketchOf([circle([10, 10], 3)], 3)
+      const port = extrudeOf(holeSketch, 10, 'cut', 3)
+      port.bodyId = box.id
+      const features: Feature[] = [boxSketch, box, lidSketch, lid, holeSketch, port]
+
+      // Each body is its own chain: the box with its hole, and the lid alone.
+      expect(buildOperationChain(port, features).map((operation) => operation.featureId)).toEqual([box.id, port.id])
+      expect(buildOperationChain(lid, features).map((operation) => operation.featureId)).toEqual([lid.id])
+      expect(volumeOf(features)).toBeCloseTo(20 * 20 * 10 - Math.PI * 9 * 10, 4)
+      expect(withSolid([lidSketch, lid], (shape) => measureVolume(shape))).toBeCloseTo(20 * 20 * 4, 6)
+
+      // Exported or drawn together, the part is both bodies.
+      const together = evaluateBodies([buildOperationChain(port, features), buildOperationChain(lid, features)])
+      try {
+        expect(measureVolume(together.shape)).toBeCloseTo(20 * 20 * 10 - Math.PI * 9 * 10 + 20 * 20 * 4, 4)
+      } finally {
+        together.release()
+      }
+    })
   })
 
   describe('shells', () => {

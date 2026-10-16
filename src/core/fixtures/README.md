@@ -21,7 +21,7 @@ documents:
 
 | Version | Differs from the next version by |
 | --- | --- |
-| v9 | Sketches have no lone points, and there are no Hole, Pattern or Shell features. The plate uses none of these, so v9 and v10 differ only in their version number. |
+| v9 | Sketches have no lone points, there are no Hole, Pattern or Shell features, and no feature names the body it changes (`bodyId`). The plate uses none of these, so v9 and v10 differ only in their version number. |
 | v8 | Revolves cannot name a sketch line as their axis, sketches have no point-on-curve, point-to-line distance or symmetric constraints, fillets cannot be chamfers (`parameters.blend`), and no edge anchor names a circle swept by a revolve (`profileRevolve`). The plate uses none of these, so v8 and v9 differ only in their version number. |
 | v7 | No parameter table and no formulas |
 | v6 | No face anchor on the face-attached sketch |

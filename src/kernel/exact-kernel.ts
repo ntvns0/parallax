@@ -6,6 +6,7 @@ import { buildOperationChain, describeOperationChain } from './operation-chain'
 import type { KernelExportFormat, KernelFeatureDiagnostic, KernelMesh, KernelRequest, ViewportMeshResult } from './kernel-types'
 import { KernelClient, type KernelProjection } from './kernel-client'
 import { recordFeatureDiagnostics } from '../core/diagnostics'
+import { listBodies } from '../core/bodies'
 
 export { useFeatureDiagnosticsStore } from '../core/diagnostics'
 
@@ -84,7 +85,7 @@ async function exportExact(feature: ExtrudeFeature | RevolveFeature, sketch: Ske
   if (!getProfileRegions(sketch).length) throw new Error('Sketch has no closed profile')
   const operations = buildOperationChain(feature, features)
   const describeContext = describeOperationChain(operations)
-  return kernelClient.exportGeometry(operations, format, describeContext)
+  return kernelClient.exportGeometry([operations], format, describeContext)
 }
 
 export function exportExactStep(feature: ExtrudeFeature | RevolveFeature, sketch: SketchFeature, features: Feature[] = [sketch, feature]) {
@@ -95,23 +96,29 @@ export function exportExactStl(feature: ExtrudeFeature | RevolveFeature, sketch:
   return exportExact(feature, sketch, features, 'stl')
 }
 
-/** The last feature in the history that produces a solid, or null if there is none. */
-function finalSolidFeature(features: Feature[]): SolidFeature | null {
-  return [...features].reverse().find(isSolidFeature) ?? null
+/**
+ * The finished state of every body: the last feature of each. Hidden bodies
+ * are included, because hiding the lid to look inside the box should not drop
+ * it from the file.
+ */
+function finalBodyFeatures(features: Feature[]): SolidFeature[] {
+  return listBodies(features).flatMap((body) => {
+    const final = features.find((feature) => feature.id === body.featureIds.at(-1))
+    return final && isSolidFeature(final) ? [final] : []
+  })
 }
 
 export function hasExactSolid(features: Feature[]): boolean {
-  return finalSolidFeature(features) !== null
+  return features.some(isSolidFeature)
 }
 
 export async function exportExactDocument(features: Feature[], format: KernelExportFormat): Promise<Blob> {
-  const solid = finalSolidFeature(features)
-  if (!solid) {
+  const finals = finalBodyFeatures(features)
+  if (!finals.length) {
     throw new Error('No 3D solid available to export. Create and extrude a sketch first.')
   }
-  const operations = buildOperationChain(solid, features)
-  const describeContext = describeOperationChain(operations)
-  return kernelClient.exportGeometry(operations, format, describeContext)
+  const bodies = finals.map((solid) => buildOperationChain(solid, features))
+  return kernelClient.exportGeometry(bodies, format, bodies.map(describeOperationChain))
 }
 
 /**
@@ -124,13 +131,13 @@ export async function projectExactDocument(
   features: Feature[],
   request: NonNullable<KernelRequest['projection']>,
 ): Promise<KernelProjection> {
-  const solid = finalSolidFeature(features)
-  if (!solid) {
+  const finals = finalBodyFeatures(features)
+  if (!finals.length) {
     throw new Error('No 3D solid available to draw. Create and extrude a sketch first.')
   }
-  const operations = buildOperationChain(solid, features)
-  const chainFeatureIds = operations.map((operation) => operation.featureId)
-  const projection = await kernelClient.evaluateProjection(operations, request, describeOperationChain(operations))
+  const bodies = finals.map((solid) => buildOperationChain(solid, features))
+  const chainFeatureIds = bodies.flat().map((operation) => operation.featureId)
+  const projection = await kernelClient.evaluateProjection(bodies, request, bodies.map(describeOperationChain))
   recordChainDiagnostics(chainFeatureIds, projection.unresolved)
   return projection
 }

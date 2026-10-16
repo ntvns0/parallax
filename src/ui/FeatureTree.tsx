@@ -1,6 +1,7 @@
 import { ChevronDown, Eye, EyeOff } from 'lucide-react'
 import { useDocumentStore } from '../core/document-store'
 import { collectDocumentDiagnostics, useFeatureDiagnosticsStore } from '../core/diagnostics'
+import { listBodies } from '../core/bodies'
 import { FeatureIcon } from './icons'
 import { ParametersSection } from './ParametersPanel'
 
@@ -10,6 +11,7 @@ export function FeaturePanel({ onMenu }: { onMenu: () => void }) {
   const unresolved = useFeatureDiagnosticsStore((state) => state.unresolved)
   const formulaDiagnostics = useDocumentStore((state) => state.formulaDiagnostics)
   const documentDiagnostics = collectDocumentDiagnostics(features)
+  const bodies = listBodies(features)
   return (
     <aside className="panel feature-panel">
       <div className="panel-header"><span>FEATURES</span><button aria-label="Open feature commands" onClick={onMenu}>•••</button></div>
@@ -19,6 +21,19 @@ export function FeaturePanel({ onMenu }: { onMenu: () => void }) {
         <button onClick={() => useDocumentStore.getState().beginSketch(undefined, 'XZ')}>XZ Plane</button>
         <button onClick={() => useDocumentStore.getState().beginSketch(undefined, 'YZ')}>YZ Plane</button>
       </div>
+      {bodies.length > 1 && <div className="body-list" aria-label="Bodies">
+        <div className="body-list-label">BODIES</div>
+        {bodies.map((body) => {
+          // A body is its finished state: selecting it selects its last feature.
+          const final = body.featureIds.at(-1)!
+          const selected = body.featureIds.includes(selectedId ?? '')
+          return (
+            <button key={body.id} className={`body-row${selected ? ' selected' : ''}`} onClick={() => useDocumentStore.getState().select(final)}>
+              <span>{body.name}</span><small>{body.featureIds.length} feature{body.featureIds.length === 1 ? '' : 's'}</small>
+            </button>
+          )
+        })}
+      </div>}
       <div className="feature-list">
         {features.map((feature) => {
           const warning = unresolved[feature.id] ?? documentDiagnostics[feature.id] ?? formulaDiagnostics[feature.id]

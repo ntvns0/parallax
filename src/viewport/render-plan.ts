@@ -1,3 +1,4 @@
+import { bodyMembership, startsBody } from '../core/bodies'
 import { modifiesPreviousSolid, SOLID_KINDS, type SolidFeature } from '../core/model'
 
 /**
@@ -24,6 +25,7 @@ export type RenderPlanFeature = {
   kind: string
   visible: boolean
   operation?: 'newBody' | 'add' | 'cut'
+  bodyId?: string
 }
 
 export type RenderPlan = {
@@ -49,36 +51,18 @@ export function isSolid<T extends RenderPlanFeature>(feature: T): feature is T &
   return (SOLID_KINDS as readonly string[]).includes(feature.kind)
 }
 
-/**
- * A sweep that starts a fresh body rather than modifying the previous one.
- *
- * Revolve belongs here for the same reason extrude does: it is a sweep with an
- * `operation`, and a `newBody` revolve is the first stage of its own body. Left
- * out, a revolve is silently folded into whatever body precedes it and the
- * render plan supersedes a solid the revolve never replaced.
- */
-function startsBody(feature: RenderPlanFeature) {
-  return (feature.kind === 'extrude' || feature.kind === 'revolve') && feature.operation === 'newBody'
-}
-
 export function planSolidRender(features: RenderPlanFeature[]): RenderPlan {
+  // Bodies are worked out from every feature, hidden ones included, so hiding
+  // one does not move the features after it into another body.
+  const bodyOf = bodyMembership(features)
   const solids = features.filter((feature) => feature.visible && isSolid(feature))
-
-  // Split into bodies. Anything before the first `newBody` still belongs to a
-  // body — the document may open on a chain whose base is a primitive.
-  const bodyOf = new Map<string, number>()
-  let body = 0
-  solids.forEach((feature, index) => {
-    if (index > 0 && startsBody(feature)) body += 1
-    bodyOf.set(feature.id, body)
-  })
 
   // Render only the final stage of each body, plus its immediate predecessor
   // while an exact-only fillet evaluates. Rendering every historical fillet
   // asks the worker to replay prefixes of length 1, 2, 3... after a cold edit,
   // turning one body rebuild into quadratic OpenCascade work.
   const rendered = new Set<string>()
-  const bodies = new Map<number, RenderPlanFeature[]>()
+  const bodies = new Map<string, RenderPlanFeature[]>()
   solids.forEach((feature) => bodies.set(bodyOf.get(feature.id)!, [...(bodies.get(bodyOf.get(feature.id)!) ?? []), feature]))
   for (const stages of bodies.values()) {
     const final = stages.at(-1)
@@ -93,7 +77,7 @@ export function planSolidRender(features: RenderPlanFeature[]): RenderPlan {
   const supersedes = new Map<string, string[]>()
   const renderedSolids = solids.filter((feature) => rendered.has(feature.id))
   renderedSolids.forEach((feature, index) => {
-    if (startsBody(feature)) {
+    if (startsBody(feature) || bodyOf.get(feature.id) === feature.id) {
       supersedes.set(feature.id, [])
       return
     }

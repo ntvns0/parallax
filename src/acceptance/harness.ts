@@ -3,6 +3,7 @@ import { resolve } from 'node:path'
 import initOpenCascade from 'replicad-opencascadejs/src/replicad_single.js'
 import { getOC, measureVolume, setOC, type Shape3D } from 'replicad'
 import { GcsWrapper, init_planegcs_module } from '@salusoft89/planegcs'
+import { listBodies } from '../core/bodies'
 import { parseStoredDocument } from '../core/document-migration'
 import { drivenSketches } from '../core/driven-sketches'
 import {
@@ -14,13 +15,12 @@ import {
   type SketchConstraint,
   type SketchEntity,
   type SketchFeature,
-  type SolidFeature,
   type Vec2,
 } from '../core/model'
 import { resolveDocumentFormulas } from '../core/parameters'
 import { resolveSketchAnchor } from '../core/sketch'
 import { buildOperationChain, operationChainCacheKey } from '../kernel/operation-chain'
-import { evaluateOperations } from '../kernel/evaluate-chain'
+import { evaluateBodies, evaluateOperations } from '../kernel/evaluate-chain'
 import { solveWithPlaneGcs } from '../sketcher/planegcs-solve'
 
 /**
@@ -83,16 +83,20 @@ export function withParameters(document: CadDocument, changes: Record<string, st
   })
 }
 
-function lastSolid(document: CadDocument): SolidFeature {
-  const last = [...document.features].reverse().find(isSolidFeature)
-  if (!last) throw new Error('The part has no solid-producing feature.')
-  return last
+/** Each body's chain, up to its last feature: the finished part, a body at a time. */
+function bodyChains(document: CadDocument) {
+  const chains = listBodies(document.features).flatMap((body) => {
+    const final = document.features.find((feature) => feature.id === body.featureIds.at(-1))
+    return final && isSolidFeature(final) ? [buildOperationChain(final, document.features)] : []
+  })
+  if (!chains.length) throw new Error('The part has no solid-producing feature.')
+  return chains
 }
 
-/** Evaluate the part and read something off its final solid. */
+/** Evaluate the part, every body of it, and read something off the result. */
 export function withSolid<T>(document: CadDocument, read: (shape: Shape3D) => T): T {
-  const operations = buildOperationChain(lastSolid(document), document.features)
-  const evaluation = evaluateOperations(operations)
+  const chains = bodyChains(document)
+  const evaluation = chains.length > 1 ? evaluateBodies(chains) : evaluateOperations(chains[0])
   try {
     if (evaluation.unresolved.length) {
       throw new Error(`Unresolved references: ${evaluation.unresolved.map((item) => JSON.stringify(item)).join('; ')}`)
@@ -173,7 +177,7 @@ export function roundTrip(document: CadDocument): CadDocument {
 }
 
 export function solidCacheKey(document: CadDocument) {
-  return operationChainCacheKey(buildOperationChain(lastSolid(document), document.features))
+  return bodyChains(document).map(operationChainCacheKey).join('\n')
 }
 
 // ---------------------------------------------------------------------------

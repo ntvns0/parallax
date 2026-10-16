@@ -6,6 +6,7 @@ import type { Feature, FilletCornerStyle, FilletProfileShape, HoleFeature, Shell
 import { describePattern, patternProblem, patternSeeds } from '../core/pattern'
 import { applyHolePreset, holeCallout, holePlacements, holeProblem, HOLE_PRESETS } from '../core/hole'
 import { revolveAxisCandidates } from '../core/revolve-axis'
+import { bodiesBefore, bodyMembership, startsBody } from '../core/bodies'
 import { shellProblem } from '../core/shell'
 import { getProfileRegions, sketchBounds } from '../core/sketch'
 import { formatLength, formatLengthInput, parseLengthInput, unitLabel } from '../core/units'
@@ -121,8 +122,27 @@ function PropertyIdentity({ feature }: { feature: Feature }) {
         <div className="feature-badge"><FeatureIcon feature={feature} /></div>
         <div><span>{feature.kind.toUpperCase()} FEATURE</span><input value={feature.name} onChange={(event) => useDocumentStore.getState().updateFeature(feature.id, { name: event.target.value })} /></div>
       </div>
+      <BodyField feature={feature} />
       <FormulaWarning feature={feature} />
     </>
+  )
+}
+
+/**
+ * Which body a feature changes, once the part has more than one to choose
+ * from before it. A feature that starts a body has nothing to choose.
+ */
+function BodyField({ feature }: { feature: Feature }) {
+  const features = useDocumentStore((state) => state.document.features)
+  const bodies = bodiesBefore(features, feature.id)
+  const current = bodyMembership(features).get(feature.id)
+  if (!current || current === feature.id || startsBody(feature) || bodies.length < 2) return null
+  return (
+    <div className="property-section">
+      <label className="select-field"><span>Body</span><select aria-label="Body to change" value={current} onChange={(event) => useDocumentStore.getState().updateFeature(feature.id, { bodyId: event.target.value })}>
+        {bodies.map((body) => <option key={body.id} value={body.id}>{body.name} · {features.find((candidate) => candidate.id === body.id)?.name}</option>)}
+      </select></label>
+    </div>
   )
 }
 
@@ -299,8 +319,8 @@ function ExtrudeProperties({ feature }: { feature: Extract<Feature, { kind: 'ext
         <h3>Boolean operation</h3>
         <label className="select-field"><span>Result</span><select value={feature.operation} onChange={(event) => useDocumentStore.getState().updateFeature(feature.id, { operation: event.target.value as typeof feature.operation })}>
           <option value="newBody">New body</option>
-          <option value="add" disabled={!hasBaseSolid}>Add to previous solid</option>
-          <option value="cut" disabled={!hasBaseSolid}>Cut from previous solid</option>
+          <option value="add" disabled={!hasBaseSolid}>Add to a body</option>
+          <option value="cut" disabled={!hasBaseSolid}>Cut from a body</option>
         </select></label>
         {onFace && <small className="field-guidance">On a face, this and the extrusion direction are the same setting — changing either one moves the other.</small>}
         {!hasBaseSolid && <small className="field-guidance">Create an earlier extrusion to enable Add and Cut.</small>}
@@ -616,8 +636,8 @@ function RevolveProperties({ feature }: { feature: Extract<Feature, { kind: 'rev
         <h3>Boolean operation</h3>
         <label className="select-field"><span>Result</span><select value={feature.operation} onChange={(event) => useDocumentStore.getState().updateFeature(feature.id, { operation: event.target.value as typeof feature.operation })}>
           <option value="newBody">New body</option>
-          <option value="add" disabled={!hasBaseSolid}>Add to previous solid</option>
-          <option value="cut" disabled={!hasBaseSolid}>Cut from previous solid</option>
+          <option value="add" disabled={!hasBaseSolid}>Add to a body</option>
+          <option value="cut" disabled={!hasBaseSolid}>Cut from a body</option>
         </select></label>
       </div>
       <div className="property-section feature-info"><span>Profile</span><strong>{source?.name ?? 'Missing sketch'}</strong><span>Operation</span><strong>{feature.operation === 'newBody' ? 'New body' : feature.operation === 'add' ? 'Boolean add' : 'Boolean cut'}</strong><span>Kernel</span><strong>OpenCascade B-rep</strong></div>

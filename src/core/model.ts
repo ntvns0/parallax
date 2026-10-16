@@ -355,6 +355,13 @@ type FeatureBase = {
    * the whitelist exists.
    */
   formulas?: Record<string, string>
+  /**
+   * For a feature that changes a solid, the body it changes, named by the
+   * feature that started that body. Absent means the body of the solid
+   * feature before it, which is how every document before schema 10 reads.
+   * See `core/bodies.ts`.
+   */
+  bodyId?: string
 }
 
 export type PrimitiveFeature = FeatureBase & {
@@ -676,6 +683,7 @@ export function validateCadDocument(value: unknown): { valid: boolean; errors: s
     if (!['box', 'cylinder', 'sphere', 'sketch', 'extrude', 'fillet', 'revolve', 'hole', 'pattern', 'shell'].includes(feature.kind)) errors.push(`${label} has an unsupported type.`)
     if (!Array.isArray(feature.position) || feature.position.length !== 3 || feature.position.some((number) => !Number.isFinite(number))) errors.push(`${label} has an invalid position.`)
     if (!feature.parameters || Object.values(feature.parameters).some((parameter) => typeof parameter === 'number' && !Number.isFinite(parameter))) errors.push(`${label} has invalid parameters.`)
+    if (feature.bodyId !== undefined && typeof feature.bodyId !== 'string') errors.push(`${label} names an invalid body.`)
     if (feature.formulas !== undefined && (typeof feature.formulas !== 'object' || Object.values(feature.formulas).some((formula) => typeof formula !== 'string'))) errors.push(`${label} has invalid formulas.`)
     if (feature.kind === 'sketch') {
       if (!['XY', 'XZ', 'YZ'].includes(feature.plane)) errors.push(`${label} uses an unsupported sketch plane.`)

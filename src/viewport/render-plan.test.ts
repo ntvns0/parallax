@@ -76,6 +76,17 @@ describe('planSolidRender', () => {
     expect(plan.supersedes.get('b2')).toEqual(['b1'])
   })
 
+  it('draws a change to an earlier body as a stage of that body, not the latest', () => {
+    const plan = planSolidRender([
+      extrude('box', 'newBody'),
+      extrude('lid', 'newBody'),
+      { id: 'port', kind: 'extrude', visible: true, operation: 'cut', bodyId: 'box' },
+    ])
+    expect(new Set(plan.rendered)).toEqual(new Set(['lid', 'port']))
+    expect(plan.supersedes.get('port')).toEqual([])
+    expect(plan.supersedes.get('lid')).toEqual([])
+  })
+
   it('draws a lone revolve body', () => {
     const plan = planSolidRender([sketch('s1'), revolve('r1', 'newBody')])
     expect([...plan.rendered]).toEqual(['r1'])

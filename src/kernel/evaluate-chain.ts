@@ -1,4 +1,4 @@
-import { draw, drawCircle, Plane, type Shape3D } from 'replicad'
+import { draw, drawCircle, makeCompound, Plane, type Shape3D } from 'replicad'
 import { holeSection, HOLE_OVERSHOOT_MM } from '../core/hole'
 import type { PatternTransform } from '../core/pattern'
 import type { Vec3 } from '../core/model'
@@ -577,6 +577,47 @@ export function evaluateOperations(operations: KernelOperation[]): ChainEvaluati
       if (released || prefixCache.retained.has(solid)) return
       released = true
       solid.delete()
+    },
+  }
+}
+
+/**
+ * Evaluate several bodies' chains and hold them as one compound, for an
+ * export or a drawing of the whole part.
+ *
+ * Each body is copied out of its evaluation and that evaluation released
+ * before the next is run: the next could otherwise evict a solid the prefix
+ * cache owns while it is still in use. A copy shares the underlying geometry,
+ * so this costs a handle, not a solid.
+ */
+export function evaluateBodies(chains: KernelOperation[][]): ChainEvaluation {
+  const copies: Shape3D[] = []
+  const unresolved: KernelFeatureDiagnostic[] = []
+  try {
+    for (const chain of chains) {
+      const evaluation = evaluateOperations(chain)
+      try {
+        copies.push(evaluation.shape.clone())
+        unresolved.push(...evaluation.unresolved)
+      } finally {
+        evaluation.release()
+      }
+    }
+  } catch (error) {
+    copies.forEach((copy) => copy.delete())
+    throw error
+  }
+  // `makeCompound` frees the shapes it is given, so the copies are its now.
+  const compound = makeCompound(copies) as Shape3D
+  let released = false
+  return {
+    shape: compound,
+    unresolved,
+    cached: false,
+    release: () => {
+      if (released) return
+      released = true
+      compound.delete()
     },
   }
 }

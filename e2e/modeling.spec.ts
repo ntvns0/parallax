@@ -4,6 +4,7 @@ import {
   commit,
   expectExactSolid,
   extrudeSelectedSketch,
+  plate,
   readDocument,
   sketchDimensions,
   sketchRectangle,
@@ -87,3 +88,36 @@ test('a named parameter drives sketch geometry, not only the dimension', async (
   await expect.poll(() => sketchDimensions(page)).toEqual([60, 30])
   await expect.poll(() => sketchWidth(page)).toBe(60)
 })
+
+test('keeps a second body, and cuts the first one after it was started', async ({ page }) => {
+  const plateId = await plate(page)
+  const extrudes = async () => (await readDocument(page)).features.filter((feature) => feature.kind === 'extrude')
+
+  // A sketch off to the side, extruded, is a body of its own.
+  await sketchRectangle(page, [35, -10], [55, 10])
+  await page.getByRole('button', { name: 'Finish sketch' }).click()
+  await page.getByRole('button', { name: 'Extrude', exact: true }).click()
+  await expect.poll(async () => (await extrudes()).length).toBe(2)
+  const lid = (await extrudes())[1]
+  expect(lid.kind === 'extrude' && lid.operation).toBe('newBody')
+  await expect(page.getByLabel('Bodies')).toContainText('Body 2')
+  await expectExactSolid(page, lid.id)
+
+  // A pocket, made a cut, changes the latest body until told otherwise.
+  await sketchRectangle(page, [-5, -5], [5, 5])
+  await page.getByRole('button', { name: 'Finish sketch' }).click()
+  await page.getByRole('button', { name: 'Extrude', exact: true }).click()
+  await expect.poll(async () => (await extrudes()).length).toBe(3)
+  await page.locator('.properties-panel select').filter({ has: page.locator('option[value="cut"]') }).selectOption('cut')
+  const body = page.getByLabel('Body to change')
+  await expect(body).toHaveValue(lid.id)
+  await body.selectOption(plateId)
+
+  const pocket = (await extrudes())[2]
+  expect(pocket.kind === 'extrude' && pocket.bodyId).toBe(plateId)
+  // Both bodies are drawn finished: the plate with its pocket, and the lid.
+  await expectExactSolid(page, pocket.id)
+  await expectExactSolid(page, lid.id)
+  await expect(page.getByLabel('Bodies')).toContainText('2 features')
+})
+

@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { bodyToChange } from './bodies'
 import {
   cloneDocument,
   createEmptyDocument,
@@ -643,6 +644,9 @@ export const useDocumentStore = create<EditorState>((set, get) => ({
       const feature = createExtrudeFeature(sketchId, state.document.features.filter((item) => item.kind === 'extrude').length + 1, distance ?? defaultDistance)
       if (sketch?.kind === 'sketch' && sketch.parameters.faceNormalSign) {
         feature.operation = operationForDistance(feature.parameters.distance, 'add')
+        // Drawn on a face, it changes the body that face belongs to.
+        const bodyId = bodyToChange(state.document.features, sketch.attachment?.featureId)
+        if (bodyId) feature.bodyId = bodyId
       }
       return mutate(state, (document) => {
         document.features.push(feature)
@@ -673,6 +677,9 @@ export const useDocumentStore = create<EditorState>((set, get) => ({
   addHoles: (sketchId) =>
     set((state) => {
       const feature = createHoleFeature(sketchId, state.document.features.filter((item) => item.kind === 'hole').length + 1, defaultHoleParameters())
+      const sketch = state.document.features.find((item) => item.id === sketchId)
+      const bodyId = bodyToChange(state.document.features, sketch?.kind === 'sketch' ? sketch.attachment?.featureId : undefined)
+      if (bodyId) feature.bodyId = bodyId
       return mutate(state, (document) => {
         document.features.push(feature)
         const sketch = document.features.find((item) => item.id === sketchId)
@@ -683,6 +690,8 @@ export const useDocumentStore = create<EditorState>((set, get) => ({
   addPattern: (featureId) =>
     set((state) => {
       const feature = createPatternFeature([featureId], state.document.features.filter((item) => item.kind === 'pattern').length + 1, defaultPatternParameters('linear'))
+      const bodyId = bodyToChange(state.document.features, featureId)
+      if (bodyId) feature.bodyId = bodyId
       return mutate(state, (document) => document.features.push(feature), feature.id)
     }),
 }))

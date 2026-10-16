@@ -39,7 +39,7 @@ The project is still a pre-alpha. It proves the browser architecture and the pri
 | Constraint solving | 🚧 | PlaneGCS worker with an explicit anchor; constraints are listed, added, edited, and removed by hand, and conflicts name the geometry |
 | Exact solids | 🚧 | Exact new-body, additive, subtractive, and filleted or chamfered extrusion and revolve, and holes, are integrated, and both now reach the viewport as B-rep rather than preview geometry; an oversized fillet reports the radius that would fit instead of failing the part |
 | STEP export | ✅ | Available for supported exact extrusions and revolves |
-| Boolean modeling | 🚧 | Exact add and cut are integrated; intersect and multi-body management remain |
+| Boolean modeling | 🚧 | Exact add and cut are integrated, each changing one of several bodies; intersect and booleans between bodies remain |
 | Drawings | 🚧 | Third-angle sheets with a hatched full section and generated dimensions export to PDF and SVG; not associative, no GD&T |
 | Named parameters | ✅ | Document parameter table, `=` formulas on feature and sketch dimensions, rename propagation, broken-formula degradation and repair |
 | Assemblies | ⬜ | Not started |
@@ -91,7 +91,7 @@ Every part is checked three ways:
 | --- | --- | --- | --- | --- |
 | A1 | **Screw-mount L-bracket.** 40 mm wide, legs of 50 and 30 mm, 4 mm thick, R4 inside corner, 1 mm chamfer on outside edges, two countersunk M4 holes per leg | Face sketches, extrude, fillet, chamfer, Hole, linear pattern | Thickness 4 → 6, hole count 2 → 3 per leg | ✅ Passes all three checks. Its hole sketches sit on base planes, held at the leg faces by the thickness formula, not attached to the faces |
 | A2 | **Desk cable clip.** Screw-down base, a C-shaped Ø10 cable channel with 2 mm walls and a 7 mm snap opening, symmetric about a centreline, 15 mm deep, a countersunk M3 hole in each wing of the base, one the mirror of the other | Arcs, construction centreline, symmetric constraint, offset intent, Hole, feature mirror | Channel Ø10 → Ø14, wall 2 → 2.5 | ✅ Passes all three checks. It was one hole until the part was built: a single centred hole would go through the channel. The outside of the channel is authored as offset leaves it, concentric at the inner radius plus `wall`, not by calling the offset tool. Trim and sketch fillet are not needed by it |
-| A3 | **Electronics enclosure with lid.** 80 × 50 × 30 mm box, shelled to 2 mm with an open top, R3 vertical edges, four Ø6 standoffs with Ø4.2 heat-set insert holes in a rectangular pattern, a USB-C cutout in a side wall, and a separate lid body with a lip set by a `clearance = 0.2 mm` parameter and a pattern of vent slots | Shell, multiple bodies, rectangular pattern, side-face sketches, Hole, per-body export | Box 80 × 50 → 100 × 60, clearance 0.2 → 0.3 | Multiple bodies, per-body export |
+| A3 | **Electronics enclosure with lid.** 80 × 50 × 30 mm box, shelled to 2 mm with an open top, R3 vertical edges, four Ø6 standoffs with Ø4.2 heat-set insert holes in a rectangular pattern, a USB-C cutout in a side wall, and a separate lid body with a lip set by a `clearance = 0.2 mm` parameter and a pattern of vent slots | Shell, multiple bodies, rectangular pattern, side-face sketches, Hole, per-body export | Box 80 × 50 → 100 × 60, clearance 0.2 → 0.3 | Per-body export, and the part itself |
 | A4 | **Parametric knob.** A revolved body, a 6 mm D-shaft bore with the flat at 4.5 mm plus clearance, 24 grip grooves in a circular pattern, and a chamfered top edge | Revolve, construction axis, circular pattern, chamfer, formula-driven dimensions | Groove count 24 → 18, shaft 6 → 5 | ✅ Passes all three checks |
 
 Three of these are the same parts as the template IDs started on the
@@ -529,12 +529,39 @@ it needs one.
     - Faces on the sides of an extrusion, and curved faces, have no anchor.
       They hold while their face stays put.
     - Walls are all one thickness, and always grow inward.
-- ⬜ **3.8 Multiple bodies** (A3). New-body extrudes and revolves start a new body
-  instead of replacing the current one. Bodies get a list in the feature tree,
-  and each later feature targets a body. This turns the linear single-body
-  operation chain into one chain per body, so plan it with
-  `kernel/evaluate-chain.ts` and its prefix cache in mind. It is the riskiest
-  item in the phase.
+- ✅ **3.8 Multiple bodies** (A3). A new-body extrude or revolve starts a body,
+  and every later feature changes one body, chosen in its properties.
+  - `core/bodies.ts` decides membership. A feature's optional `bodyId`
+    (schema 10) names the body it changes, by the feature that started it.
+    Without one, a feature changes the body of the solid feature before it.
+    That is how every older document reads, so none needed migrating.
+  - Each body is its own chain. `buildOperationChain` takes only the features
+    of the body it is building, so evaluating one body never replays another.
+    The prefix cache needed no change, because a chain is still a list of
+    operations. The render plan uses the same membership to draw each body's
+    finished state.
+  - The document's STEP and STL export and the drawing views now hold every
+    body, hidden ones included, as one compound (`evaluateBodies`). Before,
+    they held only the last body.
+  - New features default to the body of what they were made from: the face a
+    sketch is on, the solid a fillet or shell was picked on, the feature a
+    pattern copies. This only happens once there are two bodies.
+  - The feature tree lists the bodies once there are two. A feature's
+    properties offer a Body select once there are two bodies before it.
+  - Proof:
+    - `bodies.test.ts` covers the membership rules.
+    - `render-plan.test.ts` draws a cut on an earlier body as a stage of that
+      body.
+    - `golden-parts.test.ts` cuts the first of two bodies, checks that each
+      chain holds only its own body, and checks that both bodies together
+      weigh what they should.
+    - `e2e/modeling.spec.ts` starts a second body, then makes a pocket, moves
+      it to the first body with the Body select, and sees both bodies drawn
+      exact.
+    - The acceptance harness now evaluates every body of a part.
+  - Follow-ups:
+    - Bodies have no names of their own, and there are no body folders.
+    - There is no booleans between bodies (combine, intersect).
 - ⬜ **3.9 Exact primitives or none.** Boxes, cylinders, and spheres are still
   mesh previews, which breaks "never label mesh-only geometry as exact".
   Rebuild them as exact features (Replicad makes this small), or remove them.
@@ -550,7 +577,7 @@ it needs one.
 - ⬜ **4.1 3MF export.** It carries units and multiple bodies, which STL cannot,
   so the enclosure and its lid go to the slicer as one file. Keep STL.
 - ⬜ **4.2 Per-body export.** Export the selected body, or each body as its own
-  file.
+  file. The whole-document export already holds every body (3.8).
 - ⬜ **4.3 Templates.** Rebase the parked lineage branch (0.2). The three starter
   templates are A1, A2, and A3, with their edit-test parameters exposed as the
   template's dimensions, so every template is already covered by the acceptance
@@ -672,8 +699,8 @@ Status: ⬜ Planned
 ### Exact feature system
 
 - ⬜ Move boxes, cylinders, and spheres to exact OpenCascade features
-- ✅ Additive and subtractive extrusion in a linear single-body history
-- ⬜ Intersecting extrusion and independent multi-body management
+- ✅ Additive and subtractive extrusion, each changing one body of the history
+- 🚧 Independent bodies, each its own chain, chosen per feature (3.8); intersecting extrusion and booleans between bodies remain
 - ✅ Multiple closed regions and profiles with internal holes
 - ✅ Revolve about the sketch X or Y axis, with new-body, add, and cut operations
 - 🚧 Manufacturing-aware Hole feature: simple, counterbored, and countersunk forms, through-all and blind, placed from sketch points, sized from presets, built as exact booleans, and kept as editable intent. Thread metadata and view callouts read from the feature remain
@@ -682,7 +709,7 @@ Status: ⬜ Planned
 - 🚧 Shell is in: inward, one wall thickness, any faces opened. Draft remains
 - ✅ Linear, rectangular, circular, and mirror patterns of features (along world axes)
 - ⬜ Sweep and loft
-- ⬜ Multiple bodies and body folders
+- 🚧 Multiple bodies are in, listed in the feature tree; body names and folders remain
 - ⬜ Feature suppression, rollback, and reorder
 
 ### References and datum geometry
@@ -927,6 +954,12 @@ Facts about OpenCascade through Replicad that cost real effort to establish. Rec
   geometry itself is exact: `BRepBndLib::AddOptimal(shape, box, false, false)`
   reports 80. When the wall leaves no room inside, the builder throws a bare
   status code; it did not hand back a bad solid in any case tried.
+- **Replicad consumes the shapes it is given.** `translate`, `rotate` and
+  `mirror` delete the shape they are called on and return a new one, and
+  `makeCompound` deletes every shape in its list. Anything still needed
+  afterwards has to be `clone()`d first; a clone shares the geometry, so it is
+  cheap. Patterns clone each tool before moving it, and `evaluateBodies` hands
+  `makeCompound` clones of each body, for the same reason.
 - **Kernel-level tests run under jsdom** (`kernel/arc-profile.test.ts`, `fillet-apply.test.ts`, `fillet-limit.test.ts`). Load the wasm with `readFileSync` and a path resolved from `process.cwd()`: `import.meta.url` is not a file URL in that environment, and the shared test setup assumes a DOM, so the `node` environment is not available.
 
 ## Major technical risks

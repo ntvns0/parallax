@@ -1,3 +1,4 @@
+import { bodyMembership } from '../core/bodies'
 import { currentEdgeReference } from '../core/edge-anchor'
 import { currentPlaneOffset } from '../core/face-anchor'
 import { planeNormalDistance } from '../core/extrude-direction'
@@ -10,8 +11,9 @@ import { getProfileRegions } from '../core/sketch'
 import type { KernelOperation, KernelPatternSeed } from './kernel-types'
 
 /**
- * Replay every extrusion up to and including `feature` as a flat list of kernel
- * operations.
+ * Replay every feature of `feature`'s body, up to and including `feature`, as
+ * a flat list of kernel operations. Other bodies are not part of it: see
+ * `core/bodies.ts`.
  *
  * Booleans are ordered, so evaluating one feature means re-running the ones
  * before it. Features whose sketch is missing or has no closed region drop out
@@ -23,7 +25,11 @@ import type { KernelOperation, KernelPatternSeed } from './kernel-types'
  */
 export function buildOperationChain(feature: SolidFeature, features: Feature[]): KernelOperation[] {
   const featureIndex = features.findIndex((candidate) => candidate.id === feature.id)
-  const relevant = features.slice(0, featureIndex >= 0 ? featureIndex + 1 : features.length)
+  const membership = bodyMembership(features)
+  const body = membership.get(feature.id)
+  const relevant = features
+    .slice(0, featureIndex >= 0 ? featureIndex + 1 : features.length)
+    .filter((candidate) => body === undefined || membership.get(candidate.id) === body)
   return relevant.flatMap((candidate) => {
     const operation = operationFor(candidate, features)
     return operation ? [operation] : []

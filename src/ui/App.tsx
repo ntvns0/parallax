@@ -19,6 +19,7 @@ import { anchorEdgeReferences } from '../core/edge-anchor'
 import { logDiagnostic } from '../core/diagnostics'
 import { createShellFeature, isSolidFeature, validateCadDocument, type CadDocument, type FaceReference, type Feature, type FilletBlend, type ShellFeature, type SolidFeature, type FilletCornerStyle, type FilletEdgeReference } from '../core/model'
 import { faceReference } from '../core/shell'
+import { bodyToChange } from '../core/bodies'
 import { formatLength, formatLengthInput, parseLengthInput, sketchSnapIncrement, unitLabel } from '../core/units'
 import { cachedExactMesh, preflightExactFillet, useKernelStore } from '../kernel/exact-kernel'
 import { expandConnectedFilletEdges, extractMeshEdges } from '../kernel/fillet-edge-reference'
@@ -161,6 +162,8 @@ export function App() {
         setNotice({ tone: 'success', message: `${feature.name} reattached to ${mode.edges.length} selected edge${mode.edges.length === 1 ? '' : 's'}.` })
       } else {
         const feature = prepareFilletFeature(mode.edges, radius, store.document.features, { cornerStyle: mode.cornerStyle, blend: mode.blend })
+        const bodyId = bodyToChange(store.document.features, mode.targetId)
+        if (bodyId) feature.bodyId = bodyId
         await preflightExactFillet(mode.targetId, feature, store.document.features)
         useDocumentStore.getState().addFillet(feature)
         setNotice({ tone: 'success', message: `${formatLength(radius, displayUnits)} ${chamfer ? 'chamfer' : 'fillet'} added to ${mode.edges.length} selected edge${mode.edges.length === 1 ? '' : 's'}.` })
@@ -200,7 +203,10 @@ export function App() {
       store.updateFeature(features[editing].id, { faces, parameters: { thickness } })
       setNotice({ tone: 'success', message: `${features[editing].name} now opens ${faces.length} face${faces.length === 1 ? '' : 's'}.` })
     } else {
-      store.addShell(createShellFeature(faces, features.filter((feature) => feature.kind === 'shell').length + 1, thickness))
+      const shell = createShellFeature(faces, features.filter((feature) => feature.kind === 'shell').length + 1, thickness)
+      const bodyId = bodyToChange(features, mode.targetId)
+      if (bodyId) shell.bodyId = bodyId
+      store.addShell(shell)
       setNotice({ tone: 'success', message: `Shelled to ${formatLength(thickness, displayUnits)} walls, open at ${faces.length} face${faces.length === 1 ? '' : 's'}.` })
     }
     dispatch({ type: 'CANCEL' })

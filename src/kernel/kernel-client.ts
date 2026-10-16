@@ -286,12 +286,12 @@ export class KernelClient {
    * the mesh cache key knows nothing about.
    */
   async evaluateProjection(
-    operations: KernelOperation[],
+    bodies: KernelOperation[][],
     projection: NonNullable<KernelRequest['projection']>,
     describeContext?: unknown,
   ): Promise<KernelProjection> {
     const id = ++this.requestId
-    const request: KernelRequest = { id, type: 'extrude', operations, output: 'projection', projection }
+    const request: KernelRequest = { id, type: 'extrude', operations: bodies[0] ?? [], bodies, output: 'projection', projection }
 
     this.pendingRequestContexts.set(id, describeContext)
     const result = new Promise<KernelProjection>((resolve, reject) => {
@@ -303,12 +303,14 @@ export class KernelClient {
     return result
   }
 
-  async exportGeometry(operations: KernelOperation[], format: KernelExportFormat, describeContext?: unknown): Promise<Blob> {
+  /** Export one body's chain, or several bodies together as one file. */
+  async exportGeometry(bodies: KernelOperation[][], format: KernelExportFormat, describeContext?: unknown): Promise<Blob> {
     const id = ++this.requestId
     const request: KernelRequest = {
       id,
       type: 'extrude',
-      operations,
+      operations: bodies[0] ?? [],
+      bodies,
       output: format,
     }
 

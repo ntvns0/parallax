@@ -4,7 +4,7 @@ import initOpenCascade from 'replicad-opencascadejs/src/replicad_single.js'
 import openCascadeWasm from 'replicad-opencascadejs/src/replicad_single.wasm?url'
 import { setOC, type Shape3D } from 'replicad'
 import type { KernelRequest, KernelResponse, KernelWorkerTimings } from './kernel-types'
-import { evaluateOperations, step } from './evaluate-chain'
+import { evaluateBodies, evaluateOperations, step } from './evaluate-chain'
 import { projectViews } from './projection'
 
 let initialization: Promise<void> | null = null
@@ -79,7 +79,11 @@ async function handle(request: KernelRequest): Promise<void> {
     await initialize()
     requestInitializationMs = wasInitialized ? 0 : initializationDurationMs
     const evaluationStartedAt = performance.now()
-    const evaluation = evaluateOperations(request.operations)
+    // Several bodies are only ever exported or drawn together; the viewport
+    // asks for each body's mesh on its own.
+    const evaluation = request.bodies && request.bodies.length > 1 && request.output !== 'mesh'
+      ? evaluateBodies(request.bodies)
+      : evaluateOperations(request.operations)
     evaluationMs = performance.now() - evaluationStartedAt
     outputStartedAt = performance.now()
     shape = evaluation.shape

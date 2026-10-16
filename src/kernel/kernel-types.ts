@@ -87,6 +87,11 @@ export type KernelRequest = {
   id: number
   type: 'extrude' | 'revolve'
   operations: KernelOperation[]
+  /**
+   * Every body's chain, for exporting or drawing a part with more than one.
+   * The output is all of them together; `operations` is then the first.
+   */
+  bodies?: KernelOperation[][]
   output: KernelOutput
   /** Required for `projection` output; ignored otherwise. */
   projection?: {

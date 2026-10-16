@@ -46,7 +46,7 @@ function edgeSignature(edge: FilletEdgeReference): string {
 }
 
 function featureSignature(feature: Feature): string {
-  const base = `${feature.id}:${feature.kind}:${feature.name}:${feature.visible}:${numbers(feature.position)}:${numbers(feature.rotation)}:${JSON.stringify(feature.parameters)}`
+  const base = `${feature.id}:${feature.kind}:${feature.name}:${feature.visible}:${feature.bodyId ?? ''}:${numbers(feature.position)}:${numbers(feature.rotation)}:${JSON.stringify(feature.parameters)}`
   if (feature.kind === 'sketch') {
     const anchor = feature.anchor ? `${feature.anchor.entityId}@${feature.anchor.point}` : ''
     return [
