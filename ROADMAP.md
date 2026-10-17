@@ -1,6 +1,6 @@
 # Parallax Roadmap
 
-Last updated: October 15, 2026 (Phase 3 under way: construction geometry, point constraints, chamfer, holes and patterns are done; A1 and A4 pass)
+Last updated: October 17, 2026 (Phase 3 under way: construction geometry, point constraints, chamfer, holes and patterns are done; A1 and A4 pass)
 
 This document tracks what Parallax can do, what the project is actively building, and the milestones required to become a professional browser-native parametric CAD system.
 
@@ -750,7 +750,14 @@ Status: ⬜ Planned
 
 - ✅ Move project persistence to IndexedDB
 - ⬜ Move large binary payloads to OPFS
-- ⬜ Crash-safe incremental autosave and recovery
+- 🚧 Crash-safe incremental autosave and recovery — an edit still in the
+  autosave delay is saved when the page is hidden or left, a synchronous
+  journal (`writeUnsavedJournal` in `core/project-storage.ts`) covers a page
+  that unloads before IndexedDB finishes, and a reload reopens the sketch and
+  selection the tab had (`core/editor-session.ts`). Proof: the sketcher e2e
+  draws a line and reloads at once, and both the line and the open sketch come
+  back; it failed every run before the journal. Saves are still whole
+  documents, not incremental
 - ⬜ Background feature-graph evaluation with cancellation
 - ✅ Geometry cache keyed by feature inputs — an LRU of intermediate solids keyed
   by every legal prefix of the operation chain, never splitting a fillet run
@@ -965,6 +972,12 @@ Facts about OpenCascade through Replicad that cost real effort to establish. Rec
   on the LAN or Tailscale threw on its first id and showed a blank page.
   `createId` in `core/model.ts` falls back to `getRandomValues`, which works
   anywhere, and every id goes through it.
+- **The browser abandons an IndexedDB write still running when the page
+  unloads.** Starting a save from `pagehide` or `visibilitychange` is not
+  enough: our save takes several awaited steps, and a reload a moment after an
+  edit kept none of it. A `localStorage` write has finished when it returns, so
+  the page writes the document there as it leaves, and the next load puts it
+  into IndexedDB before reading anything.
 - **Kernel-level tests run under jsdom** (`kernel/arc-profile.test.ts`, `fillet-apply.test.ts`, `fillet-limit.test.ts`). Load the wasm with `readFileSync` and a path resolved from `process.cwd()`: `import.meta.url` is not a file URL in that environment, and the shared test setup assumes a DOM, so the `node` environment is not available.
 
 ## Major technical risks

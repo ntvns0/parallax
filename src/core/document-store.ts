@@ -42,6 +42,7 @@ import { resolveSketchAnchor } from './sketch'
 import { ProjectPersistenceService, sortProjects, updateProjectList } from './project-persistence'
 import { deriveFaceAnchor } from './face-anchor'
 import { areDocumentsStructurallyEqual } from './geometry-signature'
+import { restoreEditorSession, writeEditorSession } from './editor-session'
 
 const MAX_HISTORY = 100
 
@@ -332,6 +333,13 @@ export const useDocumentStore = create<EditorState>((set, get) => ({
         logDiagnostic('info', 'Project storage', `Moved ${migration.migratedProjects} project(s) and ${migration.migratedSnapshots} recovery snapshot(s) from browser local storage into IndexedDB.`)
       }
 
+      // An edit the last page left before it reached IndexedDB goes in first.
+      const journal = storage.readUnsavedJournal()
+      if (journal) {
+        await persistenceService.persistDocument(journal, (await storage.readWorkspace())?.projects ?? [])
+        storage.clearUnsavedJournal()
+      }
+
       const workspace = await storage.readWorkspace()
       const candidates = workspace
         ? [workspace.activeDocumentId, ...workspace.projects.map((project) => project.id)]
@@ -351,6 +359,7 @@ export const useDocumentStore = create<EditorState>((set, get) => ({
 
       set({
         ...resolved(document),
+        ...restoreEditorSession(document),
         projects: updateProjectList(workspace?.projects ?? [], document),
         recoverySnapshots: await storage.readRecoverySnapshots(document.id),
         savedAt: document.updatedAt,
@@ -368,6 +377,8 @@ export const useDocumentStore = create<EditorState>((set, get) => ({
     set({ saveStatus: 'saving', saveError: null })
     try {
       const projects = await persistenceService.persistDocument(state.document, state.projects)
+      // A newer edit than this save means the journal may hold it.
+      if (get().document === state.document) storage.clearUnsavedJournal()
       set({
         projects,
         recoverySnapshots: await storage.readRecoverySnapshots(state.document.id),
@@ -702,4 +713,35 @@ useDocumentStore.subscribe((state, previous) => {
   if (areDocumentsStructurallyEqual(state.document, previous.document)) return
   clearTimeout(saveTimer)
   saveTimer = setTimeout(() => void useDocumentStore.getState().save(), 700)
+})
+
+/**
+ * Save an edit still waiting out the autosave delay now. A phone may discard a
+ * hidden tab without warning, so hiding the page is the last reliable moment.
+ * The journal covers a page that unloads before the IndexedDB save finishes.
+ */
+export function flushPendingSave(): Promise<void> | undefined {
+  clearTimeout(saveTimer)
+  const state = useDocumentStore.getState()
+  if (!state.ready || state.saveStatus !== 'unsaved') return undefined
+  storage.writeUnsavedJournal(state.document)
+  return state.save()
+}
+
+if (typeof document !== 'undefined') {
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') void flushPendingSave()
+  })
+  window.addEventListener('pagehide', () => void flushPendingSave())
+}
+
+useDocumentStore.subscribe((state, previous) => {
+  if (!state.ready) return
+  if (
+    state.ready === previous.ready &&
+    state.document.id === previous.document.id &&
+    state.activeSketchId === previous.activeSketchId &&
+    state.selectedId === previous.selectedId
+  ) return
+  writeEditorSession({ documentId: state.document.id, activeSketchId: state.activeSketchId, selectedId: state.selectedId })
 })

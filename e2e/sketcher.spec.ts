@@ -163,3 +163,17 @@ test('offsets a rectangle picked as a chain into a frame', async ({ page }) => {
   expect(Math.max(...xs)).toBe(12)
   await expect(page.locator('.profile-status')).toContainText('1 region ready · 1 hole')
 })
+
+test('a reload straight after drawing keeps the line and reopens the sketch', async ({ page }) => {
+  await page.goto('/?test=1')
+  await page.getByRole('button', { name: 'Create sketch' }).click()
+  await page.getByRole('button', { name: /XY plane/ }).click()
+  await page.keyboard.press('l')
+  await drag(page, [0, 0], [30, 0])
+  await expect.poll(() => firstLine(page)).toEqual([[0, 0], [30, 0]])
+
+  // No wait for the autosave delay: leaving the page saves what is pending.
+  await page.reload()
+  await expect(page.locator('svg.sketch-surface')).toHaveCount(1)
+  await expect.poll(() => firstLine(page)).toEqual([[0, 0], [30, 0]])
+})

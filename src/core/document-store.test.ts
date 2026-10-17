@@ -63,6 +63,54 @@ describe('local project workspace', () => {
     expect(await storage.readDocument(emptyId)).toBeNull()
   })
 
+  it('reopens the sketch that was open when the page reloaded', async () => {
+    const first = await freshStore()
+    first.getState().addFeature('box')
+    first.getState().beginSketch(undefined, 'XY')
+    const sketchId = first.getState().activeSketchId
+    await first.getState().save()
+
+    vi.resetModules()
+    const reloaded = await freshStore()
+    expect(reloaded.getState().activeSketchId).toBe(sketchId)
+    expect(reloaded.getState().selectedId).toBe(sketchId)
+  })
+
+  it('saves a pending edit as soon as the page is hidden', async () => {
+    const { useDocumentStore, flushPendingSave } = await import('./document-store')
+    await useDocumentStore.getState().hydrate()
+    useDocumentStore.getState().addFeature('box')
+    expect(useDocumentStore.getState().saveStatus).toBe('unsaved')
+
+    await flushPendingSave()
+    const saved = await storage.readDocument(useDocumentStore.getState().document.id)
+    expect(saved?.features[0].kind).toBe('box')
+  })
+
+  it('recovers an edit whose save the page did not live to finish', async () => {
+    const first = await freshStore()
+    first.getState().addFeature('box')
+    // What the page leaves behind when it unloads mid-save: the journal only.
+    storage.writeUnsavedJournal(first.getState().document)
+    const id = first.getState().document.id
+
+    vi.resetModules()
+    const reloaded = await freshStore()
+    expect(reloaded.getState().document.id).toBe(id)
+    expect(reloaded.getState().document.features.map((feature) => feature.kind)).toEqual(['box'])
+    expect(storage.readUnsavedJournal()).toBeNull()
+  })
+
+  it('clears the journal once a save completes', async () => {
+    const { useDocumentStore, flushPendingSave } = await import('./document-store')
+    await useDocumentStore.getState().hydrate()
+    useDocumentStore.getState().addFeature('box')
+    const saving = flushPendingSave()
+    expect(storage.readUnsavedJournal()?.features).toHaveLength(1)
+    await saving
+    expect(storage.readUnsavedJournal()).toBeNull()
+  })
+
   it('creates a plane-specific sketch and a linked extrusion', async () => {
     const useDocumentStore = await freshStore()
     useDocumentStore.getState().beginSketch(undefined, 'YZ', 20, 1)

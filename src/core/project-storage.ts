@@ -113,6 +113,43 @@ export async function writeWorkspace(workspace: WorkspaceIndex): Promise<void> {
   await runRequest(WORKSPACE_STORE, 'readwrite', (store) => store.put(workspace, WORKSPACE_KEY))
 }
 
+const UNSAVED_JOURNAL_KEY = 'parallax.unsaved-journal'
+
+/**
+ * A synchronous copy of an edit that had not reached IndexedDB when the page
+ * was left.
+ *
+ * An IndexedDB write takes several asynchronous steps, and the browser drops
+ * any still running when the page unloads, so an edit made in the autosave
+ * delay before a reload never landed. A localStorage write has finished when
+ * it returns. This holds one document, is written only as the page is left,
+ * and is removed by the next save that completes, so it stays far from the
+ * quota cliff described at the top of this file.
+ */
+export function writeUnsavedJournal(document: CadDocument): void {
+  try {
+    localStorage.setItem(UNSAVED_JOURNAL_KEY, JSON.stringify(document))
+  } catch {
+    // Over quota or storage disabled: the IndexedDB save still runs.
+  }
+}
+
+export function readUnsavedJournal(): CadDocument | null {
+  try {
+    return parseStoredDocument(localStorage.getItem(UNSAVED_JOURNAL_KEY))
+  } catch {
+    return null
+  }
+}
+
+export function clearUnsavedJournal(): void {
+  try {
+    localStorage.removeItem(UNSAVED_JOURNAL_KEY)
+  } catch {
+    // Nothing to clear when storage is unavailable.
+  }
+}
+
 const LEGACY_SINGLE_DOCUMENT_KEY = 'parallax.document.v1'
 const LEGACY_WORKSPACE_KEY = 'parallax.workspace.v1'
 const LEGACY_DOCUMENT_PREFIX = 'parallax.document.v2.'

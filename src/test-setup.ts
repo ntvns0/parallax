@@ -9,4 +9,5 @@ beforeEach(() => {
   globalThis.indexedDB = new IDBFactory()
   resetStorageConnection()
   localStorage.clear()
+  sessionStorage.clear()
 })
